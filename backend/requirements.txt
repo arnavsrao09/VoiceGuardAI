@@ -1,0 +1,81 @@
+# ============================================================
+# VoiceGuardAI Backend - Requirements
+# Python 3.11+
+# ============================================================
+
+# -----------------------------
+# Web Framework
+# -----------------------------
+fastapi
+uvicorn[standard]
+
+# -----------------------------
+# Configuration & Validation
+# -----------------------------
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# -----------------------------
+# Database
+# -----------------------------
+sqlalchemy>=2.0
+asyncpg
+psycopg2-binary
+pgvector
+alembic
+
+# -----------------------------
+# Redis
+# -----------------------------
+redis
+
+# -----------------------------
+# Numerical / Scientific
+# -----------------------------
+numpy
+scipy
+
+# -----------------------------
+# Audio Processing
+# -----------------------------
+librosa
+soundfile
+
+# -----------------------------
+# Deep Learning
+# -----------------------------
+torch
+torchaudio
+
+# -----------------------------
+# ONNX Inference
+# -----------------------------
+onnxruntime
+
+# -----------------------------
+# Voice Activity Detection
+# -----------------------------
+silero-vad
+
+# -----------------------------
+# Speaker Verification
+# -----------------------------
+speechbrain
+
+# -----------------------------
+# Prosody Analysis
+# -----------------------------
+praat-parselmouth
+pyworld
+
+# -----------------------------
+# HTTP / Multipart
+# -----------------------------
+python-multipart
+
+# -----------------------------
+# Testing
+# -----------------------------
+pytest
+pytest-asyncio
+httpx
