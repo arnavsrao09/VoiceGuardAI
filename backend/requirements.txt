@@ -74,6 +74,12 @@ pyworld
 python-multipart
 
 # -----------------------------
+# HuggingFace (XLS-R / WavLM)
+# -----------------------------
+transformers
+huggingface_hub
+
+# -----------------------------
 # Testing
 # -----------------------------
 pytest
