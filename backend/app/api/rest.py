@@ -6,6 +6,7 @@ from app.api import schemas
 from app.ml.pipeline import InferencePipeline
 import uuid
 import io
+import numpy as np
 import librosa
 
 router = APIRouter()
@@ -71,3 +72,34 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
 @router.get("/alerts", response_model=list[schemas.AlertResponse])
 async def list_alerts(db: AsyncSession = Depends(get_db)):
     return await crud.get_all_alerts(db)
+
+@router.post("/speakers/verify")
+async def verify_speaker(
+    profile_id: uuid.UUID = Form(...),
+    audio: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await crud.get_voice_profile(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Speaker profile not found")
+
+    try:
+        audio_bytes = await audio.read()
+        y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+
+        pipeline = InferencePipeline.get_instance()
+        enrolled_emb = np.array(profile.embedding, dtype=np.float32)
+        res = pipeline.verifier.verify_against_profile(y, enrolled_emb)
+
+        return {
+            "profile_id": str(profile.id),
+            "profile_name": profile.name,
+            "similarity": res["similarity"],
+            "match_percentage": round(max(0, res["similarity"]) * 100, 1),
+            "is_verified": res["is_verified"],
+            "threshold": 0.75
+        }
+    except Exception as e:
+        print(f"Verification Error: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to verify audio: {str(e)}")
+

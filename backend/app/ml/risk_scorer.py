@@ -69,7 +69,7 @@ class RiskScorer:
         self,
         weights: ScoringWeights | None = None,
         ema_alpha: float = 0.3,
-        alert_consecutive_threshold: int = 3,
+        alert_consecutive_threshold: int = 1,
     ):
         self.weights = weights or ScoringWeights()
         self.ema_alpha = ema_alpha
@@ -91,16 +91,16 @@ class RiskScorer:
         speaker_drift: float = 0.0,
         context_risk: float = 0.0,
         deepfake_confidence: float = 1.0,
+        has_enrollment: bool = False,
     ) -> dict:
-        """Compute the ensemble risk score.
+        """Compute the ensemble risk score with adaptive weight re-normalization.
 
         Parameters
         ----------
         deepfake_prob : float
             Probability that the audio is synthetic (0–1).
         speaker_match : float
-            Cosine similarity to enrolled speaker (0–1).  Converted to
-            risk = 1 − match internally.
+            Cosine similarity to enrolled speaker (0–1).
         prosody_anomaly : float
             Prosody anomaly score (0–1).
         speaker_drift : float
@@ -108,8 +108,11 @@ class RiskScorer:
         context_risk : float
             External context risk signal (0–1).
         deepfake_confidence : float
-            Detector confidence (0–1).  Used to discount the deepfake
-            signal when the model is uncertain.
+            Detector confidence (0–1).
+        has_enrollment : bool
+            Whether an enrolled speaker profile is linked to this session.
+            If False, speaker mismatch penalty is excluded and remaining
+            weights are re-normalized.
 
         Returns
         -------
@@ -118,16 +121,30 @@ class RiskScorer:
         """
         self._chunk_count += 1
 
-        # ── Convert speaker similarity to risk ─────────────────────────
-        speaker_risk = max(0.0, 1.0 - speaker_match)
+        if has_enrollment:
+            # Full ensemble when speaker profile is enrolled & linked
+            w_df = 0.40
+            w_spk = 0.35
+            w_pros = 0.15
+            w_drift = 0.10
+            w_ctx = 0.0
+            speaker_risk = max(0.0, 1.0 - speaker_match)
+        else:
+            # Re-normalized weights when no profile is linked (general deepfake monitoring)
+            w_df = 0.60
+            w_spk = 0.00
+            w_pros = 0.30
+            w_drift = 0.10
+            w_ctx = 0.0
+            speaker_risk = 0.0
 
         # ── Weighted ensemble fusion ───────────────────────────────────
         raw_score = (
-            self.weights.deepfake * (deepfake_prob * deepfake_confidence)
-            + self.weights.speaker * speaker_risk
-            + self.weights.prosody * prosody_anomaly
-            + self.weights.speaker_drift * speaker_drift
-            + self.weights.context * context_risk
+            w_df * (deepfake_prob * deepfake_confidence)
+            + w_spk * speaker_risk
+            + w_pros * prosody_anomaly
+            + w_drift * speaker_drift
+            + w_ctx * context_risk
         )
         raw_score = max(0.0, min(1.0, raw_score))
 
@@ -154,9 +171,10 @@ class RiskScorer:
             "chunk_index": self._chunk_count,
             "should_alert": should_alert,
             "alert_reason": alert_reason,
+            "has_enrollment": has_enrollment,
             "raw_components": {
                 "deepfake": round(deepfake_prob, 4),
-                "speaker_match": round(speaker_match, 4),
+                "speaker_match": round(speaker_match, 4) if has_enrollment else 1.0,
                 "speaker_drift": round(speaker_drift, 4),
                 "prosody": round(prosody_anomaly, 4),
                 "context": round(context_risk, 4),
@@ -188,8 +206,10 @@ class RiskScorer:
     ) -> tuple[bool, str | None]:
         """Debounced alert generation.
 
-        An alert fires only when the risk level has been HIGH or CRITICAL
+        An alert fires when the risk level has been HIGH or CRITICAL
         for ``alert_consecutive_threshold`` chunks in a row.
+        After firing, the counter resets so alerts can fire again
+        during sustained high-risk periods.
         """
         is_high = level in (self.LEVEL_HIGH, self.LEVEL_CRITICAL)
 
@@ -201,13 +221,12 @@ class RiskScorer:
             self._alert.last_alert_reason = None
             return False, None
 
-        if (
-            self._alert.consecutive_high >= self.alert_consecutive_threshold
-            and not self._alert.alert_fired
-        ):
+        if self._alert.consecutive_high >= self.alert_consecutive_threshold:
             reason = self._determine_reason(deepfake_prob, speaker_drift, level)
             self._alert.alert_fired = True
             self._alert.last_alert_reason = reason
+            # Reset counter so alerts can fire again during sustained high risk
+            self._alert.consecutive_high = 0
             return True, reason
 
         return False, None

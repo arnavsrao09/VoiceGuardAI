@@ -13,6 +13,7 @@ export interface ModelDetail {
     prosody_anomaly_score: number;
   };
   speaker_verified: boolean;
+  speaker_similarity?: number;
 }
 
 export interface ComponentScores {
@@ -29,6 +30,8 @@ export interface LiveRiskData {
   chunk_index: number;
   should_alert: boolean;
   alert_reason: string | null;
+  has_enrollment: boolean;
+  profile_name?: string | null;
   raw_components: ComponentScores;
   session_id: string;
   timestamp: string;
@@ -52,6 +55,7 @@ export function useAudioStreamer() {
   const [riskHistory, setRiskHistory] = useState<{ time: string; score: number }[]>([]);
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [graceCountdown, setGraceCountdown] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -59,10 +63,17 @@ export function useAudioStreamer() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const timerRef = useRef<number | null>(null);
+  const graceTimerRef = useRef<number | null>(null);
 
   const stopMonitoring = useCallback(() => {
     setIsMonitoring(false);
     setIsConnected(false);
+    setGraceCountdown(null);
+
+    if (graceTimerRef.current) {
+      clearInterval(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -90,19 +101,25 @@ export function useAudioStreamer() {
     }
   }, []);
 
-  const startMonitoring = useCallback(async (file?: File) => {
+  const startMonitoring = useCallback(async (file?: File, profileId?: string) => {
     setError(null);
     setRecordingTime(0);
+    setGraceCountdown(null);
+
+    if (graceTimerRef.current) {
+      clearInterval(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
 
     try {
-      // 1. Establish WebSocket connection to backend
-      const wsUrl = 'ws://localhost:8000/ws/stream';
+      // 1. Establish WebSocket connection to backend (with optional profile_id query param)
+      const wsUrl = `ws://localhost:8000/ws/stream${profileId ? `?profile_id=${profileId}` : ''}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
         setIsConnected(true);
-        console.log('[AudioStreamer] Connected to VoiceGuardAI WebSocket');
+        console.log(`[AudioStreamer] Connected to VoiceGuardAI WebSocket (Profile: ${profileId || 'None'})`);
       };
 
       ws.onmessage = (event) => {
@@ -164,9 +181,31 @@ export function useAudioStreamer() {
         // Connect directly to destination so user can hear the playback
         bufferSource.connect(audioCtx.destination);
         
-        // Stop automatically when file finishes
+        // When file playback ends, grant 10 seconds grace window for action
         bufferSource.onended = () => {
-          stopMonitoring();
+          // Stop processor from sending more audio
+          if (processorRef.current) {
+            processorRef.current.disconnect();
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+
+          let countdown = 10;
+          setGraceCountdown(countdown);
+
+          graceTimerRef.current = window.setInterval(() => {
+            countdown -= 1;
+            setGraceCountdown(countdown);
+            if (countdown <= 0) {
+              if (graceTimerRef.current) {
+                clearInterval(graceTimerRef.current);
+                graceTimerRef.current = null;
+              }
+              stopMonitoring();
+            }
+          }, 1000);
         };
         
         source = bufferSource;
@@ -230,6 +269,7 @@ export function useAudioStreamer() {
     riskHistory,
     alerts,
     recordingTime,
+    graceCountdown,
     error,
     startMonitoring,
     stopMonitoring,

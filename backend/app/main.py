@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .api import rest, websocket
 from .ml.pipeline import InferencePipeline
-from .db.database import engine, Base
+from .db.database import engine, Base, db_dialect
 import app.db.models
 from sqlalchemy import text
 
@@ -12,7 +12,11 @@ from sqlalchemy import text
 async def lifespan(app: FastAPI):
     # Startup: Initialize DB
     async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        if db_dialect == "postgresql":
+            try:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            except Exception as e:
+                print(f"[DB] pgvector extension creation skipped: {e}")
         await conn.run_sync(Base.metadata.create_all)
 
     # Startup: Load models and warmup

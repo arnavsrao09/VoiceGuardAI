@@ -31,7 +31,7 @@ export default function AlertsPage() {
             trigger_reason: a.trigger_reason,
             risk_score: a.risk_score,
             created_at: a.created_at,
-            status: 'active', // can be extended with acknowledged_at logic later
+            status: 'active',
           })));
         }
       } catch (err) {
@@ -40,7 +40,10 @@ export default function AlertsPage() {
         setIsLoading(false);
       }
     };
+
     fetchAlerts();
+    const interval = setInterval(fetchAlerts, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const [filterSev, setFilterSev] = useState<string>('all');

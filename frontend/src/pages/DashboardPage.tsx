@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Upload, Square, X, FileAudio, AlertTriangle, Clock, Zap, Radio, WifiOff, ShieldAlert, ShieldCheck, Info, ChevronRight, Activity, Cpu, Wifi, TrendingDown } from 'lucide-react';
+import { Mic, Upload, Square, X, FileAudio, AlertTriangle, Clock, Zap, Radio, ShieldAlert, ShieldCheck, Info, Activity, Cpu, Wifi, TrendingDown } from 'lucide-react';
 import AudioVisualizer from '../components/dashboard/AudioVisualizer';
 import { useAudioStreamer } from '../hooks/useAudioStreamer';
 
@@ -309,78 +309,132 @@ function StatsBar({ isMonitoring, isConnected, latencyMs }: { isMonitoring: bool
 }
 
 /* ========================================
-   Sessions Panel
+   Session Logs Panel
    ======================================== */
-function SessionsPanel({ isMonitoring, sessionId, sessions: propSessions }: { isMonitoring: boolean; sessionId?: string; sessions: { id: string; caller: string; status: 'active' | 'monitoring' | 'ended'; risk: number; dur: string }[] }) {
-  const sessions = isMonitoring && sessionId
-    ? [
-        { id: `#${sessionId.slice(0, 5)}`, caller: 'Live Microphone Stream', status: 'active' as const, risk: 0.15, dur: 'Live' },
-        ...propSessions,
-      ]
-    : propSessions;
+interface SessionLogItem {
+  id: string;
+  caller: string;
+  status: 'active' | 'monitoring' | 'ended';
+  risk: number;
+  dur: string;
+  timestamp: string;
+}
 
-  const statusCfg = {
-    active: { label: 'LIVE', color: 'var(--color-risk-low)', pulse: true },
-    monitoring: { label: 'OK', color: 'var(--color-risk-low)', pulse: true },
-    ended: { label: 'ENDED', color: 'var(--color-sentinel-text-dim)', pulse: false },
-  };
+function formatISTTime(isoStr?: string): string {
+  if (!isoStr) return 'Just now';
+  const clean = isoStr.endsWith('Z') || isoStr.includes('+') ? isoStr : `${isoStr}Z`;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return 'Just now';
+  return d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }) + ' IST';
+}
+
+function formatSessionDuration(startStr?: string, endStr?: string): string {
+  if (!startStr) return '0s duration';
+  if (!endStr) return 'Live';
+  const start = new Date(startStr.endsWith('Z') || startStr.includes('+') ? startStr : `${startStr}Z`).getTime();
+  const end = new Date(endStr.endsWith('Z') || endStr.includes('+') ? endStr : `${endStr}Z`).getTime();
+  const diffSec = Math.max(0, Math.round((end - start) / 1000));
+  if (diffSec < 60) return `${diffSec}s duration`;
+  const m = Math.floor(diffSec / 60);
+  const s = diffSec % 60;
+  return `${m}m ${s}s duration`;
+}
+
+function SessionsPanel({ 
+  isMonitoring, 
+  sessionId, 
+  liveRiskScore,
+  sessions: propSessions 
+}: { 
+  isMonitoring: boolean; 
+  sessionId?: string; 
+  liveRiskScore: number;
+  sessions: SessionLogItem[];
+}) {
+  // Limit to 5 most recent session logs
+  const sessions = (isMonitoring && sessionId
+    ? [
+        { 
+          id: `#${sessionId.slice(0, 5)}`, 
+          caller: 'Live Microphone Stream', 
+          status: 'active' as const, 
+          risk: liveRiskScore, 
+          dur: 'Live',
+          timestamp: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ' IST'
+        },
+        ...propSessions.filter(p => !p.id.includes(sessionId.slice(0, 5))),
+      ]
+    : propSessions).slice(0, 5);
 
   const riskColor = (r: number) =>
     r < 0.3 ? 'var(--color-risk-low)' : r < 0.6 ? 'var(--color-risk-medium)' : r < 0.8 ? 'var(--color-risk-high)' : 'var(--color-risk-critical)';
 
+  const riskBg = (r: number) =>
+    r < 0.3 ? 'rgba(0,229,200,0.1)' : r < 0.6 ? 'rgba(245,197,66,0.1)' : r < 0.8 ? 'rgba(249,115,22,0.1)' : 'rgba(239,68,68,0.1)';
+
+  const riskLabel = (r: number) =>
+    r < 0.3 ? 'Low' : r < 0.6 ? 'Med' : 'High';
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Active Sessions</h3>
-        <span className="flex items-center gap-1 text-[10px] text-[var(--color-risk-low)]">
-          <Radio className={`w-3 h-3 ${isMonitoring ? 'animate-pulse' : ''}`} /> {isMonitoring ? 'Live Analysis' : 'Session Ready'}
+        <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Session Logs</h3>
+        <span className="flex items-center gap-1 text-[10px] text-[var(--color-risk-low)] font-semibold">
+          <Radio className={`w-3 h-3 ${isMonitoring ? 'animate-pulse' : ''}`} /> {isMonitoring ? 'Live Stream Active' : `${sessions.length} Recent Logs`}
         </span>
       </div>
       {sessions.length === 0 ? (
-        <div className="text-center py-6 text-xs text-[var(--color-sentinel-text-dim)]">
-          No sessions recorded yet.
+        <div className="text-center py-10 text-xs text-[var(--color-sentinel-text-dim)]">
+          No session logs recorded yet.
         </div>
       ) : (
-      <div className="flex flex-col gap-2">
-        {sessions.map((s, i) => {
-          const cfg = statusCfg[s.status];
-          return (
+        <div className="flex flex-col gap-2.5">
+          {sessions.map((s, i) => (
             <motion.div
-              key={s.id}
+              key={`${s.id}-${i}`}
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] hover:border-[var(--color-sentinel-border)] transition-colors cursor-pointer group"
+              className="flex items-center justify-between p-3 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] hover:border-[var(--color-sentinel-border)] transition-all"
             >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                s.status === 'active' ? 'bg-[rgba(0,229,200,0.12)]' : 'bg-[var(--color-sentinel-surface-3)]'
-              }`}>
-                {s.status === 'ended'
-                  ? <WifiOff className="w-3.5 h-3.5 text-[var(--color-sentinel-text-dim)]" />
-                  : <Mic className="w-3.5 h-3.5 text-[var(--color-accent-primary)]" />
-                }
-              </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 pr-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-[var(--color-sentinel-text)]">Session {s.id}</span>
-                  <span className="flex items-center gap-1 text-[9px] font-bold" style={{ color: cfg.color }}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${cfg.pulse ? 'animate-pulse' : ''}`} style={{ background: cfg.color }} />
-                    {cfg.label}
-                  </span>
+                  <span className="text-xs font-bold text-[var(--color-sentinel-text)]">Session {s.id}</span>
+                  {s.status === 'active' && (
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-[var(--color-risk-low)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-risk-low)] animate-pulse" />
+                      LIVE
+                    </span>
+                  )}
                 </div>
-                <p className="text-[10px] text-[var(--color-sentinel-text-dim)] truncate">{s.caller}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-[11px] text-[var(--color-sentinel-text-dim)] truncate">{s.caller}</p>
+                  <span className="text-[10px] text-[var(--color-sentinel-text-dim)]">·</span>
+                  <span className="text-[10px] text-[var(--color-sentinel-text-dim)] font-mono">{s.timestamp}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0 text-[10px]">
-                <span className="text-[var(--color-sentinel-text-dim)]">{s.dur}</span>
-                <span className="font-bold flex items-center gap-0.5" style={{ color: riskColor(s.risk) }}>
-                  <Zap className="w-3 h-3" /> {s.risk.toFixed(2)}
+
+              <div className="flex items-center gap-3 shrink-0 text-xs">
+                <span className="text-[11px] text-[var(--color-sentinel-text-dim)] flex items-center gap-1 font-mono">
+                  <Clock className="w-3 h-3 text-[var(--color-sentinel-text-dim)]" />
+                  {s.dur}
+                </span>
+                <span 
+                  className="font-bold font-mono text-xs px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
+                  style={{ color: riskColor(s.risk), background: riskBg(s.risk) }}
+                >
+                  <Zap className="w-3 h-3" /> {(s.risk * 100).toFixed(0)}% · {riskLabel(s.risk)}
                 </span>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-[var(--color-sentinel-text-dim)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </motion.div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -470,68 +524,147 @@ export default function DashboardPage() {
     riskData,
     alerts,
     recordingTime,
+    graceCountdown,
     error,
     startMonitoring,
     stopMonitoring,
   } = useAudioStreamer();
 
   const [showUpload, setShowUpload] = useState(false);
-  const [hasProfiles, setHasProfiles] = useState(false);
-  const [noProfileWarning, setNoProfileWarning] = useState(false);
-  const [dbSessions, setDbSessions] = useState<{ id: string; caller: string; status: 'active' | 'monitoring' | 'ended'; risk: number; dur: string }[]>([]);
+  const [speakerProfiles, setSpeakerProfiles] = useState<{ id: string; name: string; user_id: string }[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [countermeasureStatus, setCountermeasureStatus] = useState<string | null>(null);
+  const [dbSessions, setDbSessions] = useState<SessionLogItem[]>([]);
+  const sessionScoresCacheRef = useRef<Record<string, number>>({});
 
+  // Continuously record live scores in cache
   useEffect(() => {
-    // Check if there are speaker profiles
-    const checkProfiles = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/api/v1/speakers');
-        if (res.ok) {
-          const data = await res.json();
-          setHasProfiles(data.length > 0);
-        }
-      } catch { /* ignore */ }
-    };
-    // Fetch sessions
-    const fetchSessions = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/api/v1/sessions');
-        if (res.ok) {
-          const data = await res.json();
-          setDbSessions(data.map((s: any) => ({
-            id: `#${String(s.session_id).slice(0, 5)}`,
+    if (riskData?.session_id && riskData.score > 0) {
+      const shortId = riskData.session_id.slice(0, 5);
+      sessionScoresCacheRef.current[riskData.session_id] = riskData.score;
+      sessionScoresCacheRef.current[shortId] = riskData.score;
+    }
+  }, [riskData]);
+
+  // Fetch sessions from backend
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/sessions');
+      if (res.ok) {
+        const data = await res.json();
+        setDbSessions(data.map((s: any) => {
+          const fullId = String(s.session_id || s.id);
+          const shortId = fullId.slice(0, 5);
+          
+          let riskVal = 0.08;
+          if (typeof s.avg_risk_score === 'number' && s.avg_risk_score > 0) {
+            riskVal = s.avg_risk_score;
+            sessionScoresCacheRef.current[shortId] = s.avg_risk_score;
+          } else if (sessionScoresCacheRef.current[shortId] !== undefined) {
+            riskVal = sessionScoresCacheRef.current[shortId];
+          } else if (typeof s.risk_score === 'number' && s.risk_score > 0) {
+            riskVal = s.risk_score;
+          }
+
+          return {
+            id: `#${shortId}`,
             caller: s.caller_id || 'Unknown Caller',
             status: (s.status === 'active' ? 'active' : 'ended') as 'active' | 'ended',
-            risk: 0,
-            dur: s.end_time
-              ? `${Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000)}:${String(Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 1000) % 60).padStart(2, '0')}`
-              : 'Live',
-          })));
-        }
-      } catch { /* ignore */ }
-    };
-    checkProfiles();
+            risk: riskVal,
+            dur: formatSessionDuration(s.start_time, s.end_time),
+            timestamp: formatISTTime(s.start_time),
+          };
+        }));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/speakers');
+      if (res.ok) {
+        const data = await res.json();
+        setSpeakerProfiles(data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          user_id: p.user_id,
+        })));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchProfiles();
     fetchSessions();
-  }, [isMonitoring]);
+
+    // Auto-poll sessions every 2 seconds to keep logs fresh in real time
+    const interval = setInterval(fetchSessions, 2000);
+    return () => clearInterval(interval);
+  }, [fetchProfiles, fetchSessions]);
+
+  // Fast staggered fetch when monitoring stops
+  const handleStopMonitoring = useCallback(() => {
+    // Optimistically update session log immediately with current session
+    if (riskData?.session_id) {
+      const shortId = riskData.session_id.slice(0, 5);
+      const score = riskData.score || 0.08;
+      sessionScoresCacheRef.current[shortId] = score;
+
+      const currentFinalSession: SessionLogItem = {
+        id: `#${shortId}`,
+        caller: riskData.profile_name ? `Stream (${riskData.profile_name})` : 'Live Stream',
+        status: 'ended',
+        risk: score,
+        dur: `${recordingTime}s active`,
+        timestamp: new Date().toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }) + ' IST',
+      };
+
+      setDbSessions((prev) => [
+        currentFinalSession,
+        ...prev.filter((p) => !p.id.includes(shortId)),
+      ]);
+    }
+
+    stopMonitoring();
+
+    // Rapid DB re-queries to guarantee latest committed score from PostgreSQL
+    setTimeout(fetchSessions, 200);
+    setTimeout(fetchSessions, 600);
+    setTimeout(fetchSessions, 1200);
+    setTimeout(fetchSessions, 2500);
+  }, [riskData, recordingTime, stopMonitoring, fetchSessions]);
 
   const handleStartMonitoring = (file?: File | React.MouseEvent) => {
-    if (!hasProfiles) {
-      setNoProfileWarning(true);
-      setTimeout(() => setNoProfileWarning(false), 4000);
-      return;
-    }
+    const profId = selectedProfileId || undefined;
     if (file && file instanceof File) {
-      startMonitoring(file);
+      startMonitoring(file, profId);
     } else {
-      startMonitoring();
+      startMonitoring(undefined, profId);
     }
   };
 
   // Preserve last valid score when stopped
-  const currentScore = riskData ? riskData.score : 0.12;
-  const deepfakeSubScore = riskData ? riskData.raw_components.deepfake : 0.10;
-  const speakerSubScore = riskData ? 1.0 - riskData.raw_components.speaker_match : 0.05;
-  const prosodySubScore = riskData ? riskData.raw_components.prosody : 0.15;
+  const currentScore = riskData ? riskData.score : 0.08;
+  const deepfakeSubScore = riskData ? riskData.raw_components.deepfake : 0.05;
+  const speakerMatchScore = riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
+  const speakerSubScore = riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
+  const prosodySubScore = riskData ? riskData.raw_components.prosody : 0.10;
   const latencyMs = riskData ? riskData.latency_ms : 0;
+  const isHighRisk = currentScore >= 0.6;
+
+  const triggerCountermeasure = (action: string) => {
+    setCountermeasureStatus(`Action Initiated: ${action} — Session Terminated`);
+    handleStopMonitoring();
+    setTimeout(() => setCountermeasureStatus(null), 6000);
+  };
+
+  function max(a: number, b: number) { return a > b ? a : b; }
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
@@ -550,13 +683,18 @@ export default function DashboardPage() {
             className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
           >
             <div>
-              <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)]">
+              <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
                 Monitoring Dashboard
+                {riskData?.profile_name && (
+                  <span className="text-xs px-2.5 py-1 rounded-lg bg-[rgba(0,229,200,0.12)] text-[var(--color-accent-primary)] font-semibold border border-[rgba(0,229,200,0.2)]">
+                    Target Speaker: {riskData.profile_name}
+                  </span>
+                )}
               </h1>
               <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-0.5">
                 {isMonitoring
                   ? `Live WebSocket stream active (${isConnected ? 'Backend Connected' : 'Connecting...'}) — ${formatTime(recordingTime)}`
-                  : 'Click Start Monitoring to connect live microphone stream to VoiceGuardAI ML backend'
+                  : 'Select an enrolled speaker profile (optional) and click Start Monitoring'
                 }
               </p>
               {error && (
@@ -564,24 +702,40 @@ export default function DashboardPage() {
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> {error}
                 </p>
               )}
-              {noProfileWarning && (
-                <p className="text-xs text-amber-400 font-semibold mt-1 flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> You must enroll at least one speaker profile before starting monitoring.
-                </p>
-              )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Speaker Profile Selector Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedProfileId}
+                  onChange={(e) => setSelectedProfileId(e.target.value)}
+                  disabled={isMonitoring}
+                  className={`px-3 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-all ${
+                    isMonitoring
+                      ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-dim)] border-[var(--color-sentinel-border)] cursor-not-allowed'
+                      : 'bg-[var(--color-sentinel-surface)] text-[var(--color-sentinel-text)] border-[var(--color-sentinel-border)] hover:border-[var(--color-accent-primary)]'
+                  }`}
+                >
+                  <option value="">General Detection (No Enrolled Profile)</option>
+                  {speakerProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      Speaker Profile: {p.name} ({p.user_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 onClick={() => setShowUpload(true)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-sentinel-border)] text-sm font-medium text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
               >
                 <Upload className="w-4 h-4" />
-                Upload
+                Upload File
               </button>
 
               <button
-                onClick={isMonitoring ? stopMonitoring : handleStartMonitoring}
+                onClick={isMonitoring ? handleStopMonitoring : handleStartMonitoring}
                 className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   isMonitoring
                     ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-risk-critical)] border border-[var(--color-risk-critical)] shadow-lg hover:bg-[rgba(239,68,68,0.1)]'
@@ -618,6 +772,96 @@ export default function DashboardPage() {
             <StatsBar isMonitoring={isMonitoring} isConnected={isConnected} latencyMs={latencyMs} />
           </motion.div>
 
+          {/* File Playback Complete — 10s Grace Action Window */}
+          <AnimatePresence>
+            {graceCountdown !== null && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mb-6 rounded-2xl border border-[var(--color-risk-medium)] bg-[rgba(245,197,66,0.08)] p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[rgba(245,197,66,0.15)] flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 text-[var(--color-risk-medium)] animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[var(--color-risk-medium)] uppercase tracking-wider flex items-center gap-2">
+                      Audio Analysis Complete · Action Window Open
+                    </h4>
+                    <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5">
+                      Uploaded file finished playing. Results will automatically save and close in <strong className="text-[var(--color-risk-medium)] font-mono text-sm">{graceCountdown}s</strong>. Take relevant countermeasures or dismiss.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1 rounded-lg bg-[var(--color-sentinel-surface-3)] text-xs font-mono font-bold text-[var(--color-risk-medium)] border border-[var(--color-risk-medium)]">
+                    Closing in {graceCountdown}s
+                  </span>
+                  <button
+                    onClick={handleStopMonitoring}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-3)] transition-colors border border-[var(--color-sentinel-border)]"
+                  >
+                    Dismiss Now
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Actionable Risk Countermeasure Banner (High Risk Warning) */}
+          <AnimatePresence>
+            {(isHighRisk || countermeasureStatus) && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-6 rounded-2xl border border-[var(--color-risk-critical)] bg-[rgba(239,68,68,0.08)] p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
+                    <ShieldAlert className="w-6 h-6 text-red-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                      High Impersonation Risk Alert Detected ({ (currentScore * 100).toFixed(0) }%)
+                    </h3>
+                    <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5 leading-relaxed">
+                      {riskData?.alert_reason || 'Synthetic voice signatures or speaker identity mismatch detected. Immediate secondary verification recommended before approving sensitive financial operations.'}
+                    </p>
+                    {countermeasureStatus && (
+                      <p className="text-xs font-bold text-[var(--color-accent-primary)] mt-1.5 animate-bounce">
+                        ✓ {countermeasureStatus}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => triggerCountermeasure("Voice Callback Initiated")}
+                    className="px-3.5 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition-all"
+                  >
+                    📞 Initiate Callback Verification
+                  </button>
+                  <button
+                    onClick={() => triggerCountermeasure("Push MFA Sent to Enrolled Mobile")}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)] text-xs font-bold text-[var(--color-accent-primary)] hover:brightness-110 transition-all"
+                  >
+                    🔐 Request Push MFA
+                  </button>
+                  <button
+                    onClick={() => triggerCountermeasure("Escalated to Supervisor Security Desk")}
+                    className="px-3.5 py-2 rounded-xl bg-[var(--color-sentinel-surface-3)] border border-[var(--color-sentinel-border)] text-xs font-bold text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
+                  >
+                    ⚠️ Escalate to Supervisor
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Persistent Dashboard Grid */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -630,7 +874,15 @@ export default function DashboardPage() {
                 <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Live Audio Stream</h3>
-                    <div className="flex items-center gap-2 text-[10px]">
+                    <div className="flex items-center gap-2.5 text-[10px]">
+                      {isMonitoring && (
+                        <button
+                          onClick={handleStopMonitoring}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 font-bold hover:bg-red-500/30 transition-all text-xs cursor-pointer shadow-sm"
+                        >
+                          <Square className="w-3 h-3 text-red-400 fill-red-400" /> Stop Stream
+                        </button>
+                      )}
                       <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full font-semibold ${
                         isMonitoring
                           ? 'bg-[rgba(0,229,200,0.1)] text-[var(--color-risk-low)]'
@@ -648,9 +900,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Sessions */}
-                <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
-                  <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} sessions={dbSessions} />
+                {/* Session Logs */}
+                <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[380px] max-h-[460px] overflow-y-auto flex flex-col justify-between">
+                  <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} liveRiskScore={currentScore} sessions={dbSessions} />
                 </div>
               </div>
 
@@ -667,14 +919,19 @@ export default function DashboardPage() {
                   <RiskGauge score={currentScore} size={220} />
 
                   {/* Sub-scores */}
-                  <div className="flex items-center gap-5 mt-2 transition-opacity duration-300 w-full justify-center">
+                  <div className="flex items-center gap-4 mt-2 transition-opacity duration-300 w-full justify-center">
                     {[
-                      { label: 'Deepfake', v: deepfakeSubScore, c: 'var(--color-accent-primary)' },
-                      { label: 'Speaker Mismatch', v: speakerSubScore, c: 'var(--color-accent-purple)' },
+                      { label: 'Deepfake Prob', v: deepfakeSubScore, c: 'var(--color-accent-primary)' },
+                      { 
+                        label: riskData?.has_enrollment ? `Speaker Match (${(speakerMatchScore! * 100).toFixed(0)}%)` : 'Speaker Verification', 
+                        v: speakerSubScore, 
+                        c: 'var(--color-accent-purple)',
+                        disabled: !riskData?.has_enrollment 
+                      },
                       { label: 'Prosody Anomaly', v: prosodySubScore, c: 'var(--color-risk-medium)' },
                     ].map(s => (
                       <div key={s.label} className="flex flex-col items-center gap-1">
-                        <span className="text-[9px] text-[var(--color-sentinel-text-dim)]">{s.label}</span>
+                        <span className="text-[9px] text-[var(--color-sentinel-text-dim)] text-center leading-tight truncate max-w-[85px]">{s.label}</span>
                         <div className="w-14 h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] overflow-hidden">
                           <motion.div
                             className="h-full rounded-full"
@@ -684,7 +941,7 @@ export default function DashboardPage() {
                           />
                         </div>
                         <span className="text-[10px] font-bold text-[var(--color-sentinel-text-muted)]">
-                          {(s.v * 100).toFixed(0)}%
+                          {s.disabled ? 'Unlinked' : `${(s.v * 100).toFixed(0)}%`}
                         </span>
                       </div>
                     ))}
@@ -692,7 +949,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Alerts */}
-                <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex-1 max-h-[460px] overflow-y-auto">
+                <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[380px] max-h-[460px] overflow-y-auto">
                   <AlertsPanel alerts={alerts} />
                 </div>
               </div>
@@ -702,10 +959,16 @@ export default function DashboardPage() {
             <div className="mt-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
               <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3">Ensemble Model Breakdown</h3>
               <div className="bg-[var(--color-sentinel-surface-2)] rounded-xl p-4 text-sm text-[var(--color-sentinel-text-muted)] overflow-x-auto font-mono text-xs">
-                <div><span className="text-[var(--color-accent-primary)] font-semibold">S_ensemble</span> = 0.40×AASIST/XLS-R + 0.25×ECAPA-TDNN + 0.15×Prosody + 0.10×SpeakerDrift</div>
+                <div>
+                  <span className="text-[var(--color-accent-primary)] font-semibold">S_ensemble</span> = 
+                  {riskData?.has_enrollment 
+                    ? ' 0.40×AASIST/XLS-R + 0.35×ECAPA-TDNN (Speaker Verification) + 0.15×Prosody + 0.10×SpeakerDrift'
+                    : ' 0.60×AASIST/XLS-R (Deepfake) + 0.30×Prosody (Forensics) + 0.10×SpeakerDrift [Adaptive Re-normalized Mode]'
+                  }
+                </div>
                 <div className="mt-2 text-[var(--color-sentinel-text-dim)]">
                   {riskData ? (
-                    <>AASIST: {riskData.model_detail.aasist_score ?? 'N/A'} | XLS-R: {riskData.model_detail.xlsr_score ?? 'N/A'} | Jitter: {riskData.model_detail.prosody.jitter} | HNR: {riskData.model_detail.prosody.hnr} dB</>
+                    <>AASIST: {riskData.model_detail.aasist_score ?? 'N/A'} | XLS-R: {riskData.model_detail.xlsr_score ?? 'N/A'} | ECAPA Sim: {riskData.model_detail.speaker_similarity !== undefined ? `${(riskData.model_detail.speaker_similarity * 100).toFixed(1)}%` : 'N/A'} | Jitter: {riskData.model_detail.prosody.jitter} | HNR: {riskData.model_detail.prosody.hnr} dB</>
                   ) : (
                     'AASIST (Graph Attention) + XLS-R 300M (Multilingual SSL) + ECAPA-TDNN + Parselmouth Prosody'
                   )}

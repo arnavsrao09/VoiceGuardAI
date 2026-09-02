@@ -101,9 +101,114 @@ export default function SpeakerProfilesPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  // Test Verification State
+  const [testingProfile, setTestingProfile] = useState<SpeakerProfile | null>(null);
+  const [isTestRecording, setIsTestRecording] = useState(false);
+  const [testCountdown, setTestCountdown] = useState(10);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ similarity: number; match_percentage: number; is_verified: boolean; threshold: number } | null>(null);
+
+  // Enrollment Recording State
+  const [enrollCountdown, setEnrollCountdown] = useState(15);
+  const enrollIntervalRef = useRef<number | null>(null);
+  const testIntervalRef = useRef<number | null>(null);
+
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleTestProfile = (profile: SpeakerProfile) => {
+    setTestingProfile(profile);
+    setTestResult(null);
+    setTestCountdown(10);
+  };
+
+  const stopTestEarly = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      if (testIntervalRef.current) clearInterval(testIntervalRef.current);
+      mediaRecorderRef.current.stop();
+      setIsTestRecording(false);
+    }
+  };
+
+  const stopEnrollEarly = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      if (enrollIntervalRef.current) clearInterval(enrollIntervalRef.current);
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const startTestRecording = async () => {
+    if (!testingProfile) return;
+    setTestResult(null);
+    setTestCountdown(10);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const testChunks: Blob[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) testChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const webmBlob = new Blob(testChunks, { type: 'audio/webm' });
+        stream.getTracks().forEach((track) => track.stop());
+
+        setIsTesting(true);
+        try {
+          const arrayBuffer = await webmBlob.arrayBuffer();
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          const audioCtx = new AudioContext();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          const wavBlob = audioBufferToWav(audioBuffer);
+
+          const formData = new FormData();
+          formData.append('profile_id', testingProfile.id);
+          formData.append('audio', wavBlob, 'test_sample.wav');
+
+          const res = await fetch('http://localhost:8000/api/v1/speakers/verify', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            setTestResult(data);
+          } else {
+            alert("Verification endpoint failed. Please ensure backend is running.");
+          }
+        } catch (err) {
+          console.error("Test verification error:", err);
+          alert("Failed to process test audio clip.");
+        } finally {
+          setIsTesting(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsTestRecording(true);
+
+      // Countdown interval for 10 seconds
+      let remaining = 10;
+      testIntervalRef.current = window.setInterval(() => {
+        remaining -= 1;
+        setTestCountdown(remaining);
+        if (remaining <= 0) {
+          if (testIntervalRef.current) clearInterval(testIntervalRef.current);
+          if (mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            setIsTestRecording(false);
+          }
+        }
+      }, 1000);
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+      alert("Microphone access is required to run test verification.");
+    }
   };
 
   const startRecording = async () => {
@@ -112,6 +217,7 @@ export default function SpeakerProfilesPage() {
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+      setEnrollCountdown(15);
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -141,13 +247,19 @@ export default function SpeakerProfilesPage() {
       setRecorded(false);
       setAudioBlob(null);
 
-      // Stop automatically after 3 seconds
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop();
-          setIsRecording(false);
+      // Guided countdown for 15 seconds
+      let remaining = 15;
+      enrollIntervalRef.current = window.setInterval(() => {
+        remaining -= 1;
+        setEnrollCountdown(remaining);
+        if (remaining <= 0) {
+          if (enrollIntervalRef.current) clearInterval(enrollIntervalRef.current);
+          if (mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            setIsRecording(false);
+          }
         }
-      }, 3000);
+      }, 1000);
     } catch (err) {
       console.error("Microphone access denied or error:", err);
       alert("Microphone access is required to enroll a speaker profile.");
@@ -335,14 +447,123 @@ export default function SpeakerProfilesPage() {
 
               <div className="mt-4 pt-3 border-t border-[var(--color-sentinel-border-subtle)] flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-risk-low)]">
-                  <CheckCircle2 className="w-4 h-4" /> 192-dim ECAPA Embedding Stored
+                  <CheckCircle2 className="w-4 h-4" /> 192-dim ECAPA Vector
                 </span>
-                <span className="text-[10px] font-mono text-[var(--color-sentinel-text-dim)]">spk-{String(p.id).slice(0, 8)}</span>
+                <button
+                  onClick={() => handleTestProfile(p)}
+                  className="px-3 py-1.5 rounded-lg bg-[rgba(0,229,200,0.12)] border border-[rgba(0,229,200,0.2)] text-xs font-bold text-[var(--color-accent-primary)] hover:bg-[rgba(0,229,200,0.25)] transition-all flex items-center gap-1"
+                >
+                  <Mic className="w-3.5 h-3.5" /> Test Verification
+                </button>
               </div>
             </motion.div>
           ))}
         </div>
         )}
+
+      {/* Test Verification Modal */}
+      <AnimatePresence>
+        {testingProfile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6"
+            >
+              <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-1">
+                Test Speaker Verification
+              </h2>
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] mb-4">
+                Testing live voice clip against enrolled profile: <strong className="text-[var(--color-accent-primary)]">{testingProfile.name}</strong>
+              </p>
+
+              <div className="p-6 rounded-xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface-2)] text-center flex flex-col items-center gap-3">
+                <button
+                  onClick={startTestRecording}
+                  disabled={isTestRecording || isTesting}
+                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                    isTestRecording
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : isTesting
+                      ? 'bg-amber-500 text-white animate-spin'
+                      : 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] hover:brightness-110'
+                  }`}
+                >
+                  <Mic className="w-6 h-6" />
+                </button>
+                <div className="flex flex-col items-center gap-1">
+                  <p className="text-xs font-semibold text-[var(--color-sentinel-text)]">
+                    {isTestRecording
+                      ? `Recording test sample... (${testCountdown}s remaining)`
+                      : isTesting
+                      ? 'Computing ECAPA-TDNN 192-dim Cosine Similarity...'
+                      : 'Click microphone to record a 10-second test sample'}
+                  </p>
+                  {isTestRecording && (
+                    <>
+                      <div className="w-48 h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] mt-2 overflow-hidden">
+                        <motion.div
+                          className="h-full bg-red-500"
+                          initial={{ width: '100%' }}
+                          animate={{ width: '0%' }}
+                          transition={{ duration: 10, ease: 'linear' }}
+                        />
+                      </div>
+                      <button
+                        onClick={stopTestEarly}
+                        className="mt-2 px-3 py-1 rounded-lg bg-red-500/20 text-red-300 text-[11px] font-semibold hover:bg-red-500/30 transition-colors"
+                      >
+                        Finish Test Early
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Test Result Display */}
+              {testResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`mt-4 p-4 rounded-xl border ${
+                    testResult.is_verified
+                      ? 'bg-[rgba(0,229,200,0.1)] border-[var(--color-risk-low)] text-[var(--color-risk-low)]'
+                      : 'bg-[rgba(239,68,68,0.1)] border-red-500 text-red-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold text-sm mb-1">
+                    <span className="flex items-center gap-1.5">
+                      {testResult.is_verified ? <CheckCircle2 className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+                      {testResult.is_verified ? 'SPEAKER VERIFIED MATCH' : 'IDENTITY MISMATCH ALERT'}
+                    </span>
+                    <span className="font-mono text-base">{testResult.match_percentage}%</span>
+                  </div>
+                  <p className="text-xs opacity-90 leading-relaxed mt-1">
+                    {testResult.is_verified
+                      ? `Cosine similarity score (${testResult.similarity.toFixed(3)}) meets the ECAPA threshold (${testResult.threshold}).`
+                      : `Cosine similarity score (${testResult.similarity.toFixed(3)}) is below the verification threshold (${testResult.threshold}). Impersonation risk flagged.`}
+                  </p>
+                </motion.div>
+              )}
+
+              <div className="flex items-center justify-end mt-6">
+                <button
+                  onClick={() => { setTestingProfile(null); setTestResult(null); }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-border)] transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
 
       {/* Enrollment Modal */}
@@ -358,7 +579,7 @@ export default function SpeakerProfilesPage() {
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
-              className="w-full max-w-lg rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6"
+              className="w-full max-w-lg rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6 max-h-[90vh] overflow-y-auto"
             >
               <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-4">Enroll New Speaker Voice</h2>
 
@@ -401,8 +622,18 @@ export default function SpeakerProfilesPage() {
                   </select>
                 </div>
 
+                {/* Suggested Reading Prompt */}
+                <div className="p-3.5 rounded-xl bg-[rgba(0,229,200,0.06)] border border-[rgba(0,229,200,0.15)] text-left">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent-primary)] block mb-1">
+                    📖 Suggested Phrase to Read Aloud (~15 Seconds):
+                  </span>
+                  <p className="text-xs text-[var(--color-sentinel-text)] italic leading-relaxed">
+                    "My voice is my secure biometric identity for VoiceGuardAI. I authorize this system to analyze my acoustic speech characteristics, pitch dynamics, and vocal tract resonance to protect my communications against AI deepfakes and unauthorized cloning attacks."
+                  </p>
+                </div>
+
                 {/* Voice Capture Box */}
-                <div className="mt-2 p-5 rounded-xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface-2)] text-center">
+                <div className="p-5 rounded-xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface-2)] text-center">
                   {!recorded ? (
                     <div className="flex flex-col items-center gap-3">
                       <button
@@ -415,14 +646,42 @@ export default function SpeakerProfilesPage() {
                       >
                         <Mic className="w-6 h-6" />
                       </button>
-                      <p className="text-xs text-[var(--color-sentinel-text-muted)] font-medium">
-                        {isRecording ? 'Recording voice sample (3 seconds)...' : 'Click microphone to record 3-second enrollment voice sample'}
-                      </p>
+                      <div className="flex flex-col items-center gap-1">
+                        <p className="text-xs text-[var(--color-sentinel-text-muted)] font-medium">
+                          {isRecording ? `Recording 15-second voice sample... (${enrollCountdown}s remaining)` : 'Click microphone to record 15-second biometric enrollment sample'}
+                        </p>
+                        {isRecording && (
+                          <>
+                            <div className="w-48 h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] mt-2 overflow-hidden">
+                              <motion.div
+                                className="h-full bg-red-500"
+                                initial={{ width: '100%' }}
+                                animate={{ width: '0%' }}
+                                transition={{ duration: 15, ease: 'linear' }}
+                              />
+                            </div>
+                            <button
+                              onClick={stopEnrollEarly}
+                              className="mt-2 px-3 py-1 rounded-lg bg-red-500/20 text-red-300 text-[11px] font-semibold hover:bg-red-500/30 transition-colors"
+                            >
+                              Finish & Save Early
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[var(--color-risk-low)]">
-                      <CheckCircle2 className="w-5 h-5 text-[var(--color-risk-low)]" />
-                      Voice sample captured & ECAPA-TDNN 192-dim vector extracted!
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-risk-low)]">
+                        <CheckCircle2 className="w-5 h-5 text-[var(--color-risk-low)]" />
+                        15-second biometric voice sample captured & 192-dim vector extracted!
+                      </div>
+                      <button
+                        onClick={() => { setRecorded(false); setAudioBlob(null); }}
+                        className="text-[11px] text-[var(--color-sentinel-text-dim)] hover:text-[var(--color-sentinel-text)] underline"
+                      >
+                        Re-record Sample
+                      </button>
                     </div>
                   )}
                 </div>
