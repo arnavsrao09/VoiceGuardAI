@@ -10,9 +10,13 @@ __pycache__/
 
 # ML models
 app/ml/models/*.onnx
+app/ml/models/*.onnx.data
 app/ml/models/*.pt
 app/ml/models/*.pth
 app/ml/models/*.bin
+app/ml/models/*.jit
+app/ml/models/*.ckpt
+app/ml/models/ecapa_cache/
 
 # IDE
 .vscode/
