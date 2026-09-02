@@ -21,7 +21,7 @@ A weighted anomaly score aggregates all features into a single
 from __future__ import annotations
 
 import numpy as np
-import parselmouth
+import parselmouth  # type: ignore
 import pyworld as pw
 from scipy.signal import welch
 

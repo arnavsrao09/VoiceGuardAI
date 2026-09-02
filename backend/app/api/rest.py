@@ -1,25 +1,48 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.db import crud
 from app.api import schemas
+from app.ml.pipeline import InferencePipeline
 import uuid
+import io
+import librosa
 
 router = APIRouter()
 
 @router.post("/speakers/enroll", response_model=schemas.SpeakerProfileResponse)
-async def enroll_speaker(profile: schemas.SpeakerProfileCreate, db: AsyncSession = Depends(get_db)):
-    # In a real scenario, this would accept an audio file upload, extract embedding, and store it.
-    # For now, we mock the embedding extraction.
-    import numpy as np
-    mock_embedding = list(np.random.randn(192).astype(float))
-    
+async def enroll_speaker(
+    user_id: str = Form(...),
+    name: str = Form(...),
+    language: str = Form("en"),
+    audio: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        audio_bytes = await audio.read()
+        
+        # Load audio and resample to 16000Hz mono
+        y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        
+        # Extract ECAPA-TDNN embedding
+        pipeline = InferencePipeline.get_instance()
+        embedding_result = pipeline._extract_speaker_only(y)
+        
+        if embedding_result.get("embedding") is not None:
+            embedding = embedding_result["embedding"].tolist()
+        else:
+            raise ValueError("Embedding extraction returned None.")
+            
+    except Exception as e:
+        print(f"Enrollment Error: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to process audio: {str(e)}")
+
     db_profile = await crud.create_voice_profile(
         db=db, 
-        user_id=profile.user_id, 
-        name=profile.name, 
-        embedding=mock_embedding,
-        language=profile.language
+        user_id=user_id, 
+        name=name, 
+        embedding=embedding,
+        language=language
     )
     return db_profile
 

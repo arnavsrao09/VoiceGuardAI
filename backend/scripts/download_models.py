@@ -25,6 +25,25 @@ import torch
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "app", "ml", "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
+# Windows symlink workaround for SpeechBrain caching
+if os.name == 'nt':
+    import shutil
+    original_symlink = os.symlink
+    def fallback_symlink(src, dst, target_is_directory=False, *, dir_fd=None):
+        try:
+            original_symlink(src, dst, target_is_directory=target_is_directory, dir_fd=dir_fd)
+        except OSError as e:
+            # WinError 1314: A required privilege is not held by the client
+            if e.winerror == 1314:
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+            else:
+                raise e
+    os.symlink = fallback_symlink
+
+
 
 # ----------------------------------------------
 # 1.  Silero VAD

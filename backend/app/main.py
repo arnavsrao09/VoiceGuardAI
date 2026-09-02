@@ -4,9 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .api import rest, websocket
 from .ml.pipeline import InferencePipeline
+from .db.database import engine, Base
+import app.db.models
+from sqlalchemy import text
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Initialize DB
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        await conn.run_sync(Base.metadata.create_all)
+
     # Startup: Load models and warmup
     pipeline = InferencePipeline.get_instance()
     pipeline.warmup()

@@ -61,21 +61,45 @@ uvicorn app.main:app --reload --port 8000
 
 ---
 
-### 3. Downloading Machine Learning Models
+### 3. Database Configuration (Cloud vs Local)
+
+You can run the PostgreSQL database locally or use a cloud provider like **Supabase** so your whole team shares the same voice profiles.
+
+**Option A: Cloud Postgres (Supabase) - Recommended for Teams**
+1. Create a new project on [Supabase](https://supabase.com).
+2. Go to your Supabase SQL Editor and enable the `pgvector` extension:
+   ```sql
+   create extension if not exists vector;
+   ```
+3. Get your connection string from Project Settings > Database.
+4. Copy `.env.example` to `.env` in the `backend/` directory:
+   ```bash
+   cp .env.example .env
+   ```
+5. Update `DATABASE_URL` in `.env` to use your Supabase string, changing `postgresql://` to `postgresql+asyncpg://` to match our async driver.
+
+**Option B: Local Postgres (Docker)**
+If you prefer a local isolated database, you can start the provided containers:
+```bash
+docker-compose up -d postgres redis
+```
+
+---
+
+### 4. Downloading Machine Learning Models
 
 Model binary files (`*.onnx.data`, `*.jit`, `*.ckpt`) are excluded from Git to keep the repository lightweight.
 
 * **Mock Mode (Default):** If no model files are present, the backend automatically runs in **Mock Mode** using deterministic outputs so you can test the frontend, WebSocket streaming, and API endpoints immediately without downloading heavy models.
 * **Full ML Inference Mode:** To download and export actual pretrained models (AASIST, Silero VAD, ECAPA-TDNN, XLS-R 300M) locally:
 
-Run the automated model downloader script inside the `backend` folder:
+Run the automated model downloader script inside the `backend` folder. This script will automatically pull from HuggingFace/PyTorch Hub and save the `.onnx` files to `app/ml/models/`.
 
 ```bash
 # Make sure you are inside the backend directory
-python -m scripts.download_models
+uv run python -m scripts.download_models
 ```
-
-This will download weights from HuggingFace / PyTorch Hub and place the generated `.onnx` files into `backend/app/ml/models/`.
+*(Note for Windows users: If you run into privilege errors, the script has built-in fallbacks. Do not use Admin mode unless absolutely necessary.)*
 
 ---
 

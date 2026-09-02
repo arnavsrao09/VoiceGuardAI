@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, Plus, Mic, CheckCircle2, ShieldCheck, Trash2, Globe, Calendar, Key } from 'lucide-react';
 
@@ -9,6 +9,56 @@ interface SpeakerProfile {
   language: string;
   created_at: string;
   status: 'enrolled' | 'pending';
+}
+
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const bufferArray = new ArrayBuffer(length);
+  const view = new DataView(bufferArray);
+  const channels = [];
+  let sample;
+  let offset = 0;
+  let pos = 0;
+
+  const setUint16 = (data: number) => {
+    view.setUint16(offset, data, true);
+    offset += 2;
+  };
+  const setUint32 = (data: number) => {
+    view.setUint32(offset, data, true);
+    offset += 4;
+  };
+
+  setUint32(0x46464952); // "RIFF"
+  setUint32(length - 8);
+  setUint32(0x45564157); // "WAVE"
+  setUint32(0x20746d66); // "fmt " chunk
+  setUint32(16);
+  setUint16(1); // PCM
+  setUint16(numOfChan);
+  setUint32(buffer.sampleRate);
+  setUint32(buffer.sampleRate * 2 * numOfChan);
+  setUint16(numOfChan * 2);
+  setUint16(16); // 16-bit
+  setUint32(0x61746164); // "data" chunk
+  setUint32(length - pos - 4);
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  while (pos < buffer.length) {
+    for (let i = 0; i < numOfChan; i++) {
+      sample = Math.max(-1, Math.min(1, channels[i][pos]));
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+      view.setInt16(offset, sample, true);
+      offset += 2;
+    }
+    pos++;
+  }
+
+  return new Blob([bufferArray], { type: 'audio/wav' });
 }
 
 export default function SpeakerProfilesPage() {
@@ -37,20 +87,72 @@ export default function SpeakerProfilesPage() {
   const [langInput, setLangInput] = useState('Hindi / English');
   const [isRecording, setIsRecording] = useState(false);
   const [recorded, setRecorded] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const webmBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        
+        try {
+          const arrayBuffer = await webmBlob.arrayBuffer();
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          const audioContext = new AudioContext();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          const wavBlob = audioBufferToWav(audioBuffer);
+          
+          setAudioBlob(wavBlob);
+          setRecorded(true);
+        } catch (e) {
+          console.error("Audio decoding failed:", e);
+          alert("Failed to process audio. Please try again.");
+        }
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecorded(false);
+      setAudioBlob(null);
+
+      // Stop automatically after 3 seconds
+      setTimeout(() => {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          setIsRecording(false);
+        }
+      }, 3000);
+    } catch (err) {
+      console.error("Microphone access denied or error:", err);
+      alert("Microphone access is required to enroll a speaker profile.");
+    }
+  };
 
   const handleEnroll = async () => {
-    if (!nameInput.trim()) return;
+    if (!nameInput.trim() || !audioBlob) return;
 
     try {
+      const formData = new FormData();
+      formData.append('user_id', userIdInput || `usr_${Date.now()}`);
+      formData.append('name', nameInput);
+      formData.append('language', langInput);
+      formData.append('audio', audioBlob, 'enrollment.webm');
+
       // Call REST API endpoint POST /api/v1/speakers/enroll
       const res = await fetch('http://localhost:8000/api/v1/speakers/enroll', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userIdInput || `usr_${Date.now()}`,
-          name: nameInput,
-          language: langInput,
-        }),
+        body: formData,
       });
 
       if (res.ok) {
@@ -99,6 +201,7 @@ export default function SpeakerProfilesPage() {
     setNameInput('');
     setUserIdInput('');
     setRecorded(false);
+    setAudioBlob(null);
   };
 
   const handleDelete = (id: string) => {
@@ -262,13 +365,7 @@ export default function SpeakerProfilesPage() {
                   {!recorded ? (
                     <div className="flex flex-col items-center gap-3">
                       <button
-                        onClick={() => {
-                          setIsRecording(true);
-                          setTimeout(() => {
-                            setIsRecording(false);
-                            setRecorded(true);
-                          }, 3000);
-                        }}
+                        onClick={startRecording}
                         className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
                           isRecording
                             ? 'bg-red-500 text-white animate-pulse'
@@ -299,9 +396,9 @@ export default function SpeakerProfilesPage() {
                 </button>
                 <button
                   onClick={handleEnroll}
-                  disabled={!nameInput.trim()}
+                  disabled={!nameInput.trim() || !audioBlob}
                   className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                    nameInput.trim()
+                    nameInput.trim() && audioBlob
                       ? 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] hover:brightness-110'
                       : 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)] cursor-not-allowed'
                   }`}
