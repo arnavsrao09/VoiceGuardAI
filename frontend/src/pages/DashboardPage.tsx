@@ -133,18 +133,32 @@ function RiskGauge({ score, size = 220 }: { score: number; size?: number }) {
 /* ========================================
    File Upload Modal
    ======================================== */
-function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: () => void }) {
+function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: (file: File) => void }) {
   const [dragging, setDragging] = useState(false);
-  const [file, setFile] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [invalidFile, setInvalidFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const f = e.dataTransfer.files[0];
     if (f) {
-      if (f.name.match(/\.(wav|mp3|flac|ogg)$/i)) {
-        setFile(f.name);
+      if (f.name.match(/\.(wav|mp3|flac|ogg|webm)$/i)) {
+        setFile(f);
+        setInvalidFile(false);
+      } else {
+        setFile(null);
+        setInvalidFile(true);
+      }
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      if (f.name.match(/\.(wav|mp3|flac|ogg|webm)$/i)) {
+        setFile(f);
         setInvalidFile(false);
       } else {
         setFile(null);
@@ -183,7 +197,7 @@ function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: (
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
-          onClick={() => { setFile('sample_voice_deepfake.wav'); setInvalidFile(false); }}
+          onClick={() => fileInputRef.current?.click()}
           className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-200 ${
             invalidFile
               ? 'border-red-500 bg-[rgba(239,68,68,0.1)]'
@@ -203,7 +217,7 @@ function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: (
           ) : file ? (
             <div className="flex flex-col items-center gap-2">
               <FileAudio className="w-10 h-10 text-[var(--color-accent-primary)]" />
-              <p className="text-sm font-semibold text-[var(--color-sentinel-text)]">{file}</p>
+              <p className="text-sm font-semibold text-[var(--color-sentinel-text)]">{file.name}</p>
               <p className="text-xs text-[var(--color-sentinel-text-dim)]">Ready for ML pipeline analysis</p>
             </div>
           ) : (
@@ -215,6 +229,13 @@ function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: (
               <p className="text-xs text-[var(--color-sentinel-text-dim)]">.wav, .mp3, .flac, .ogg — max 50MB</p>
             </div>
           )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            className="hidden"
+            accept=".wav,.mp3,.flac,.ogg,.webm"
+          />
         </div>
 
         <div className="flex items-center justify-end gap-3 mt-5">
@@ -225,7 +246,7 @@ function UploadModal({ onClose, onAnalyze }: { onClose: () => void; onAnalyze: (
             Cancel
           </button>
           <button
-            onClick={() => { onAnalyze(); onClose(); }}
+            onClick={() => { if (file) { onAnalyze(file); onClose(); } }}
             disabled={!file}
             className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
               file
@@ -290,16 +311,13 @@ function StatsBar({ isMonitoring, isConnected, latencyMs }: { isMonitoring: bool
 /* ========================================
    Sessions Panel
    ======================================== */
-function SessionsPanel({ isMonitoring, sessionId }: { isMonitoring: boolean; sessionId?: string }) {
-  const sessions = isMonitoring
+function SessionsPanel({ isMonitoring, sessionId, sessions: propSessions }: { isMonitoring: boolean; sessionId?: string; sessions: { id: string; caller: string; status: 'active' | 'monitoring' | 'ended'; risk: number; dur: string }[] }) {
+  const sessions = isMonitoring && sessionId
     ? [
-        { id: sessionId ? `#${sessionId.slice(0, 5)}` : '#4358c', caller: 'Live Microphone Stream', status: 'active' as const, risk: 0.15, dur: 'Live' },
-        { id: '#1041', caller: 'Dept. Finance Call', status: 'monitoring' as const, risk: 0.12, dur: '12:15' },
+        { id: `#${sessionId.slice(0, 5)}`, caller: 'Live Microphone Stream', status: 'active' as const, risk: 0.15, dur: 'Live' },
+        ...propSessions,
       ]
-    : [
-        { id: '#4358c', caller: 'Live Stream (Last active)', status: 'ended' as const, risk: 0.15, dur: '01:40' },
-        { id: '#1039', caller: 'Voice sample #1039', status: 'ended' as const, risk: 0.71, dur: '08:23' },
-      ];
+    : propSessions;
 
   const statusCfg = {
     active: { label: 'LIVE', color: 'var(--color-risk-low)', pulse: true },
@@ -318,6 +336,11 @@ function SessionsPanel({ isMonitoring, sessionId }: { isMonitoring: boolean; ses
           <Radio className={`w-3 h-3 ${isMonitoring ? 'animate-pulse' : ''}`} /> {isMonitoring ? 'Live Analysis' : 'Session Ready'}
         </span>
       </div>
+      {sessions.length === 0 ? (
+        <div className="text-center py-6 text-xs text-[var(--color-sentinel-text-dim)]">
+          No sessions recorded yet.
+        </div>
+      ) : (
       <div className="flex flex-col gap-2">
         {sessions.map((s, i) => {
           const cfg = statusCfg[s.status];
@@ -358,6 +381,7 @@ function SessionsPanel({ isMonitoring, sessionId }: { isMonitoring: boolean; ses
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -452,6 +476,55 @@ export default function DashboardPage() {
   } = useAudioStreamer();
 
   const [showUpload, setShowUpload] = useState(false);
+  const [hasProfiles, setHasProfiles] = useState(false);
+  const [noProfileWarning, setNoProfileWarning] = useState(false);
+  const [dbSessions, setDbSessions] = useState<{ id: string; caller: string; status: 'active' | 'monitoring' | 'ended'; risk: number; dur: string }[]>([]);
+
+  useEffect(() => {
+    // Check if there are speaker profiles
+    const checkProfiles = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/speakers');
+        if (res.ok) {
+          const data = await res.json();
+          setHasProfiles(data.length > 0);
+        }
+      } catch { /* ignore */ }
+    };
+    // Fetch sessions
+    const fetchSessions = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/sessions');
+        if (res.ok) {
+          const data = await res.json();
+          setDbSessions(data.map((s: any) => ({
+            id: `#${String(s.session_id).slice(0, 5)}`,
+            caller: s.caller_id || 'Unknown Caller',
+            status: (s.status === 'active' ? 'active' : 'ended') as 'active' | 'ended',
+            risk: 0,
+            dur: s.end_time
+              ? `${Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000)}:${String(Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 1000) % 60).padStart(2, '0')}`
+              : 'Live',
+          })));
+        }
+      } catch { /* ignore */ }
+    };
+    checkProfiles();
+    fetchSessions();
+  }, [isMonitoring]);
+
+  const handleStartMonitoring = (file?: File | React.MouseEvent) => {
+    if (!hasProfiles) {
+      setNoProfileWarning(true);
+      setTimeout(() => setNoProfileWarning(false), 4000);
+      return;
+    }
+    if (file && file instanceof File) {
+      startMonitoring(file);
+    } else {
+      startMonitoring();
+    }
+  };
 
   // Preserve last valid score when stopped
   const currentScore = riskData ? riskData.score : 0.12;
@@ -491,6 +564,11 @@ export default function DashboardPage() {
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> {error}
                 </p>
               )}
+              {noProfileWarning && (
+                <p className="text-xs text-amber-400 font-semibold mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> You must enroll at least one speaker profile before starting monitoring.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -503,7 +581,7 @@ export default function DashboardPage() {
               </button>
 
               <button
-                onClick={isMonitoring ? stopMonitoring : startMonitoring}
+                onClick={isMonitoring ? stopMonitoring : handleStartMonitoring}
                 className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   isMonitoring
                     ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-risk-critical)] border border-[var(--color-risk-critical)] shadow-lg hover:bg-[rgba(239,68,68,0.1)]'
@@ -572,7 +650,7 @@ export default function DashboardPage() {
 
                 {/* Sessions */}
                 <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
-                  <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} />
+                  <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} sessions={dbSessions} />
                 </div>
               </div>
 
@@ -643,8 +721,8 @@ export default function DashboardPage() {
         {showUpload && (
           <UploadModal
             onClose={() => setShowUpload(false)}
-            onAnalyze={() => {
-              startMonitoring();
+            onAnalyze={(file) => {
+              handleStartMonitoring(file);
             }}
           />
         )}

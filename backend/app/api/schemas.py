@@ -37,3 +37,12 @@ class AlertResponse(BaseModel):
     created_at: datetime
     
     model_config = {"from_attributes": True}
+
+class DetectionSessionResponse(BaseModel):
+    id: uuid.UUID = Field(alias="session_id")
+    caller_id: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    status: str
+
+    model_config = {"from_attributes": True, "populate_by_name": True}

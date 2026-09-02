@@ -90,7 +90,7 @@ export function useAudioStreamer() {
     }
   }, []);
 
-  const startMonitoring = useCallback(async () => {
+  const startMonitoring = useCallback(async (file?: File) => {
     setError(null);
     setRecordingTime(0);
 
@@ -144,25 +144,46 @@ export function useAudioStreamer() {
         setIsConnected(false);
       };
 
-      // 2. Request user microphone
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-      mediaStreamRef.current = stream;
-
-      // 3. Audio Context setup (16kHz)
+      // 2. Audio Context setup (16kHz)
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioCtx = new AudioContextClass({ sampleRate: 16000 });
       audioContextRef.current = audioCtx;
 
-      const source = audioCtx.createMediaStreamSource(stream);
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
+
+      let source: MediaStreamAudioSourceNode | AudioBufferSourceNode;
+
+      if (file) {
+        // Stream from uploaded file
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const bufferSource = audioCtx.createBufferSource();
+        bufferSource.buffer = audioBuffer;
+        
+        // Connect directly to destination so user can hear the playback
+        bufferSource.connect(audioCtx.destination);
+        
+        // Stop automatically when file finishes
+        bufferSource.onended = () => {
+          stopMonitoring();
+        };
+        
+        source = bufferSource;
+        bufferSource.start();
+      } else {
+        // Request user microphone
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+        mediaStreamRef.current = stream;
+        source = audioCtx.createMediaStreamSource(stream);
+      }
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
@@ -180,6 +201,7 @@ export function useAudioStreamer() {
       };
 
       source.connect(processor);
+      // Processor must be connected to destination for onaudioprocess to trigger (it outputs silence since we don't write to outputBuffer)
       processor.connect(audioCtx.destination);
 
       setIsMonitoring(true);

@@ -22,6 +22,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core.audio_buffer import CircularAudioBuffer
 from app.ml.pipeline import InferencePipeline
 from app.ml.risk_scorer import RiskScorer
+from app.db.database import AsyncSessionLocal
+from app.db import crud
+from sqlalchemy.future import select
+from app.db.models import DetectionSession
 
 router = APIRouter()
 
@@ -37,13 +41,17 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
     # ── Per-session state ─────────────────────────────────────────────
-    session_id = uuid.uuid4()
     buffer = CircularAudioBuffer()
     risk_scorer = RiskScorer()
     session_embeddings: list[np.ndarray] = []
     enrollment_embedding: np.ndarray | None = None  # TODO: load from DB on connect
 
     pipeline = InferencePipeline.get_instance()
+
+    # Create session in DB
+    async with AsyncSessionLocal() as db:
+        db_session = await crud.create_detection_session(db, caller_id="Live Stream")
+        session_id = db_session.session_id
 
     print(f"[WS] Session {session_id} — client connected")
 
@@ -109,6 +117,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "speaker_verified": ml_result["speaker"]["is_verified"],
                     }
 
+                    if result["should_alert"] and result["alert_reason"]:
+                        # Save alert to DB
+                        async with AsyncSessionLocal() as db:
+                            await crud.create_alert(
+                                db,
+                                session_id=session_id,
+                                severity=result["level"].upper(),
+                                trigger_reason=result["alert_reason"],
+                                risk_score=result["score"]
+                            )
+
                     await websocket.send_json(result)
 
             # ── Handle JSON text messages (config, enrollment, etc.) ──
@@ -125,3 +144,13 @@ async def websocket_endpoint(websocket: WebSocket):
         risk_scorer.reset()
         pipeline.vad.reset()
         session_embeddings.clear()
+        
+        # End session in DB
+        async with AsyncSessionLocal() as db:
+            stmt = select(DetectionSession).where(DetectionSession.session_id == session_id)
+            res = await db.execute(stmt)
+            sess = res.scalar_one_or_none()
+            if sess:
+                sess.end_time = datetime.utcnow()
+                sess.status = "ended"
+                await db.commit()

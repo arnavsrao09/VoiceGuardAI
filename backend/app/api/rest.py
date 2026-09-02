@@ -52,3 +52,22 @@ async def get_speaker(profile_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     if not profile:
         raise HTTPException(status_code=404, detail="Speaker profile not found")
     return profile
+
+@router.get("/speakers", response_model=list[schemas.SpeakerProfileResponse])
+async def list_speakers(db: AsyncSession = Depends(get_db)):
+    return await crud.get_all_voice_profiles(db)
+
+@router.delete("/speakers/{profile_id}")
+async def delete_speaker(profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    deleted = await crud.delete_voice_profile(db, profile_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Speaker profile not found")
+    return {"detail": "Profile deleted successfully"}
+
+@router.get("/sessions", response_model=list[schemas.DetectionSessionResponse])
+async def list_sessions(db: AsyncSession = Depends(get_db)):
+    return await crud.get_all_sessions(db)
+
+@router.get("/alerts", response_model=list[schemas.AlertResponse])
+async def list_alerts(db: AsyncSession = Depends(get_db)):
+    return await crud.get_all_alerts(db)

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, Plus, Mic, CheckCircle2, ShieldCheck, Trash2, Globe, Calendar, Key } from 'lucide-react';
 
@@ -62,24 +62,32 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 }
 
 export default function SpeakerProfilesPage() {
-  const [profiles, setProfiles] = useState<SpeakerProfile[]>([
-    {
-      id: 'spk-901a4f',
-      user_id: 'usr_bank_exec_01',
-      name: 'Rajesh Kumar (Financial Officer)',
-      language: 'Hindi / English',
-      created_at: '2026-08-28T10:15:00Z',
-      status: 'enrolled',
-    },
-    {
-      id: 'spk-382b7c',
-      user_id: 'usr_sec_admin_02',
-      name: 'Anita Sharma (Security Lead)',
-      language: 'Tamil / English',
-      created_at: '2026-08-30T14:22:00Z',
-      status: 'enrolled',
-    },
-  ]);
+  const [profiles, setProfiles] = useState<SpeakerProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/speakers');
+        if (res.ok) {
+          const data = await res.json();
+          setProfiles(data.map((p: any) => ({
+            id: p.id,
+            user_id: p.user_id,
+            name: p.name,
+            language: p.language,
+            created_at: p.created_at,
+            status: 'enrolled' as const,
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch profiles:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchProfiles();
+  }, []);
 
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -88,8 +96,15 @@ export default function SpeakerProfilesPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [recorded, setRecorded] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const startRecording = async () => {
     try {
@@ -140,7 +155,8 @@ export default function SpeakerProfilesPage() {
   };
 
   const handleEnroll = async () => {
-    if (!nameInput.trim() || !audioBlob) return;
+    if (!nameInput.trim() || !audioBlob || isSaving) return;
+    setIsSaving(true);
 
     try {
       const formData = new FormData();
@@ -159,7 +175,7 @@ export default function SpeakerProfilesPage() {
         const data = await res.json();
         setProfiles((prev) => [
           {
-            id: data.id ? `spk-${data.id.slice(0, 6)}` : `spk-${Date.now().toString(36)}`,
+            id: data.id,
             user_id: data.user_id,
             name: data.name,
             language: data.language,
@@ -182,6 +198,7 @@ export default function SpeakerProfilesPage() {
           ...prev,
         ]);
       }
+      showToast("Speaker profile enrolled successfully!");
     } catch {
       // Fallback
       setProfiles((prev) => [
@@ -195,17 +212,27 @@ export default function SpeakerProfilesPage() {
         },
         ...prev,
       ]);
+      showToast("Speaker profile enrolled successfully (offline mode)!");
+    } finally {
+      setShowEnrollModal(false);
+      setNameInput('');
+      setUserIdInput('');
+      setRecorded(false);
+      setAudioBlob(null);
+      setIsSaving(false);
     }
-
-    setShowEnrollModal(false);
-    setNameInput('');
-    setUserIdInput('');
-    setRecorded(false);
-    setAudioBlob(null);
   };
 
-  const handleDelete = (id: string) => {
-    setProfiles((prev) => prev.filter((p) => p.id !== id));
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this speaker profile? This action cannot be undone.")) {
+      try {
+        await fetch(`http://localhost:8000/api/v1/speakers/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Failed to delete from backend:', err);
+      }
+      setProfiles((prev) => prev.filter((p) => p.id !== id));
+      showToast("Speaker profile deleted successfully.");
+    }
   };
 
   return (
@@ -247,6 +274,19 @@ export default function SpeakerProfilesPage() {
         </div>
 
         {/* Speaker Profile Cards */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : profiles.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-12 text-center">
+            <UserCheck className="w-12 h-12 text-[var(--color-sentinel-text-dim)] mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-2">No Speaker Profiles Enrolled</h3>
+            <p className="text-sm text-[var(--color-sentinel-text-muted)] max-w-md mx-auto">
+              Enroll your first speaker voice profile to enable ECAPA-TDNN speaker verification during live call monitoring.
+            </p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {profiles.map((p) => (
             <motion.div
@@ -297,11 +337,12 @@ export default function SpeakerProfilesPage() {
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-risk-low)]">
                   <CheckCircle2 className="w-4 h-4" /> 192-dim ECAPA Embedding Stored
                 </span>
-                <span className="text-[10px] font-mono text-[var(--color-sentinel-text-dim)]">{p.id}</span>
+                <span className="text-[10px] font-mono text-[var(--color-sentinel-text-dim)]">spk-{String(p.id).slice(0, 8)}</span>
               </div>
             </motion.div>
           ))}
         </div>
+        )}
       </div>
 
       {/* Enrollment Modal */}
@@ -396,17 +437,39 @@ export default function SpeakerProfilesPage() {
                 </button>
                 <button
                   onClick={handleEnroll}
-                  disabled={!nameInput.trim() || !audioBlob}
-                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                    nameInput.trim() && audioBlob
+                  disabled={!nameInput.trim() || !audioBlob || isSaving}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                    nameInput.trim() && audioBlob && !isSaving
                       ? 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] hover:brightness-110'
                       : 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)] cursor-not-allowed'
                   }`}
                 >
-                  Save Profile
+                  {isSaving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-[var(--color-sentinel-bg)] border-t-transparent rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Profile'
+                  )}
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-50 bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] text-[var(--color-sentinel-text)] px-4 py-3 rounded-xl shadow-lg flex items-center gap-3"
+          >
+            <CheckCircle2 className="w-5 h-5 text-[var(--color-risk-low)]" />
+            <span className="text-sm font-semibold">{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>

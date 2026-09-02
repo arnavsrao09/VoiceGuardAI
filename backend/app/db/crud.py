@@ -43,3 +43,42 @@ async def create_alert(db: AsyncSession, session_id: uuid.UUID, severity: str, t
     db.add(alert)
     await db.commit()
     return alert
+
+async def get_all_voice_profiles(db: AsyncSession):
+    result = await db.execute(select(VoiceProfile).order_by(VoiceProfile.created_at.desc()))
+    return result.scalars().all()
+
+async def delete_voice_profile(db: AsyncSession, profile_id: uuid.UUID):
+    result = await db.execute(select(VoiceProfile).filter(VoiceProfile.id == profile_id))
+    profile = result.scalars().first()
+    if profile:
+        await db.delete(profile)
+        await db.commit()
+        return True
+    return False
+
+async def get_all_sessions(db: AsyncSession):
+    result = await db.execute(select(DetectionSession).order_by(DetectionSession.start_time.desc()))
+    return result.scalars().all()
+
+async def get_all_alerts(db: AsyncSession):
+    result = await db.execute(select(Alert).order_by(Alert.created_at.desc()))
+    return result.scalars().all()
+
+async def create_alert(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    severity: str,
+    trigger_reason: str,
+    risk_score: float
+):
+    alert = Alert(
+        session_id=session_id,
+        severity=severity,
+        trigger_reason=trigger_reason,
+        risk_score=risk_score
+    )
+    db.add(alert)
+    await db.commit()
+    await db.refresh(alert)
+    return alert

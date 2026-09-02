@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ShieldAlert, AlertTriangle, ShieldCheck, Info, Filter, Download, Clock, CheckCircle } from 'lucide-react';
 
@@ -13,44 +13,35 @@ interface AlertItem {
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<AlertItem[]>([
-    {
-      id: 'alt-801a9f',
-      session_id: '#4358c',
-      severity: 'critical',
-      trigger_reason: 'High deepfake probability detected (0.91) via AASIST model',
-      risk_score: 0.88,
-      created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-      status: 'active',
-    },
-    {
-      id: 'alt-712b3e',
-      session_id: '#4358c',
-      severity: 'high',
-      trigger_reason: 'Speaker identity change detected mid-call via ECAPA-TDNN drift tracking',
-      risk_score: 0.74,
-      created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-      status: 'active',
-    },
-    {
-      id: 'alt-542c1d',
-      session_id: '#1039',
-      severity: 'medium',
-      trigger_reason: 'Unnatural pitch contour & low spectral flatness detected by prosody analyzer',
-      risk_score: 0.52,
-      created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      status: 'acknowledged',
-    },
-    {
-      id: 'alt-211d0a',
-      session_id: '#1038',
-      severity: 'low',
-      trigger_reason: 'Routine monitoring session completed — low impersonation risk',
-      risk_score: 0.14,
-      created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      status: 'acknowledged',
-    },
-  ]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+
+
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/alerts');
+        if (res.ok) {
+          const data = await res.json();
+          setAlerts(data.map((a: any) => ({
+            id: a.id,
+            session_id: `#${String(a.session_id).slice(0, 5)}`,
+            severity: a.severity.toLowerCase(),
+            trigger_reason: a.trigger_reason,
+            risk_score: a.risk_score,
+            created_at: a.created_at,
+            status: 'active', // can be extended with acknowledged_at logic later
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch alerts:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAlerts();
+  }, []);
 
   const [filterSev, setFilterSev] = useState<string>('all');
 
@@ -131,6 +122,19 @@ export default function AlertsPage() {
         </div>
 
         {/* Alert List */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : filteredAlerts.length === 0 ? (
+          <div className="text-center py-16">
+            <ShieldCheck className="w-12 h-12 text-[var(--color-sentinel-text-dim)] mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-2">No Alerts Found</h3>
+            <p className="text-sm text-[var(--color-sentinel-text-muted)]">
+              Your detection history is clean based on the current filters.
+            </p>
+          </div>
+        ) : (
         <div className="flex flex-col gap-3">
           {filteredAlerts.map((a) => {
             const badge = sevBadge(a.severity);
@@ -179,6 +183,7 @@ export default function AlertsPage() {
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );
