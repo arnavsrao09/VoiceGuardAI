@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Upload, Square, X, FileAudio, AlertTriangle, Clock, Zap, Radio, ShieldAlert, ShieldCheck, Info, Activity, Cpu, Wifi, TrendingDown } from 'lucide-react';
 import AudioVisualizer from '../components/dashboard/AudioVisualizer';
 import { useAudioStreamer } from '../hooks/useAudioStreamer';
+import { apiFetch } from '../lib/api';
 
 /* ========================================
    Risk Gauge (inline, larger, animated)
@@ -454,7 +455,10 @@ function AlertsPanel({ alerts }: { alerts: { sev: 'low' | 'medium' | 'high' | 'c
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   const displayAlerts = useMemo(() => {
-    if (alerts.length > 0) return alerts;
+    const valid = (alerts || []).filter(
+      (a): a is NonNullable<typeof a> => Boolean(a && a.sev),
+    );
+    if (valid.length > 0) return valid;
     return [{ sev: 'low' as const, msg: 'System active. Multi-layer ML pipeline ready.', time: 'now', session: '' }];
   }, [alerts]);
 
@@ -469,7 +473,7 @@ function AlertsPanel({ alerts }: { alerts: { sev: 'low' | 'medium' | 'high' | 'c
       <div className="flex flex-col gap-2">
         <AnimatePresence>
           {displayAlerts.map((a, i) => {
-            if (dismissed.has(i)) return null;
+            if (!a || dismissed.has(i)) return null;
             const cfg = sevCfg[a.sev] || sevCfg.low;
             const Icon = cfg.icon;
             return (
@@ -550,9 +554,8 @@ export default function DashboardPage() {
   // Fetch sessions from backend
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/sessions');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/org/sessions');
+      if (data) {
         setDbSessions(data.map((s: any) => {
           const fullId = String(s.session_id || s.id);
           const shortId = fullId.slice(0, 5);
@@ -582,9 +585,8 @@ export default function DashboardPage() {
 
   const fetchProfiles = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/speakers');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/org/speakers');
+      if (data) {
         setSpeakerProfiles(data.map((p: any) => ({
           id: p.id,
           name: p.name,

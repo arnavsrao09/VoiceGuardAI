@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, Plus, Mic, CheckCircle2, ShieldCheck, Trash2, Globe, Calendar, Key } from 'lucide-react';
+import { getAuthToken } from '../lib/api';
 
 interface SpeakerProfile {
   id: string;
@@ -68,7 +69,15 @@ export default function SpeakerProfilesPage() {
   useEffect(() => {
     const fetchProfiles = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/speakers');
+        const token = getAuthToken();
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        
+        // Try org-scoped endpoint first, fall back to legacy
+        const url = token
+          ? 'http://localhost:8000/api/v1/org/speakers'
+          : 'http://localhost:8000/api/v1/speakers';
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const data = await res.json();
           setProfiles(data.map((p: any) => ({
@@ -87,7 +96,7 @@ export default function SpeakerProfilesPage() {
       }
     };
     fetchProfiles();
-  }, []);
+  }, []); 
 
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -170,8 +179,12 @@ export default function SpeakerProfilesPage() {
           formData.append('profile_id', testingProfile.id);
           formData.append('audio', wavBlob, 'test_sample.wav');
 
+          const token = getAuthToken();
+          const verifyHeaders: Record<string, string> = {};
+          if (token) verifyHeaders['Authorization'] = `Bearer ${token}`;
           const res = await fetch('http://localhost:8000/api/v1/speakers/verify', {
             method: 'POST',
+            headers: verifyHeaders,
             body: formData,
           });
 
@@ -275,11 +288,16 @@ export default function SpeakerProfilesPage() {
       formData.append('user_id', userIdInput || `usr_${Date.now()}`);
       formData.append('name', nameInput);
       formData.append('language', langInput);
-      formData.append('audio', audioBlob, 'enrollment.webm');
+      formData.append('audio', audioBlob, 'enrollment.wav');
 
-      // Call REST API endpoint POST /api/v1/speakers/enroll
+      // Call REST API endpoint with JWT auth
+      const token = getAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('http://localhost:8000/api/v1/speakers/enroll', {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -338,7 +356,10 @@ export default function SpeakerProfilesPage() {
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this speaker profile? This action cannot be undone.")) {
       try {
-        await fetch(`http://localhost:8000/api/v1/speakers/${id}`, { method: 'DELETE' });
+        const token = getAuthToken();
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        await fetch(`http://localhost:8000/api/v1/speakers/${id}`, { method: 'DELETE', headers });
       } catch (err) {
         console.error('Failed to delete from backend:', err);
       }

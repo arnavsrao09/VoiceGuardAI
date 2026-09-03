@@ -275,10 +275,10 @@ function TryItDemo() {
     ? result.score < 0.3
       ? 'var(--color-risk-low)'
       : result.score < 0.6
-      ? 'var(--color-risk-medium)'
-      : result.score < 0.8
-      ? 'var(--color-risk-high)'
-      : 'var(--color-risk-critical)'
+        ? 'var(--color-risk-medium)'
+        : result.score < 0.8
+          ? 'var(--color-risk-high)'
+          : 'var(--color-risk-critical)'
     : 'var(--color-accent-primary)';
 
   return (
@@ -531,16 +531,14 @@ function PipelineSection() {
                   animate={inView ? { opacity: 1, x: 0 } : {}}
                   transition={{ delay: i * 0.06, duration: 0.3 }}
                   onClick={() => setActiveStep(i)}
-                  className={`flex items-center gap-4 p-4 rounded-xl text-left transition-all duration-200 ${
-                    isActive
+                  className={`flex items-center gap-4 p-4 rounded-xl text-left transition-all duration-200 ${isActive
                       ? 'bg-[var(--color-sentinel-surface-2)] border border-[var(--color-accent-primary)] shadow-lg shadow-[var(--color-accent-primary-glow)]'
                       : 'border border-transparent hover:bg-[var(--color-sentinel-surface-2)]'
-                  }`}
+                    }`}
                 >
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                      isActive ? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)]'
-                    }`}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${isActive ? 'bg-[var(--color-accent-primary)] text-white' : 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)]'
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                   </div>
@@ -700,7 +698,7 @@ export default function LandingPage() {
             transition={{ delay: 0.15, duration: 0.6 }}
             className="text-lg sm:text-xl text-[var(--color-sentinel-text-muted)] max-w-xl leading-relaxed mb-10"
           >
-            Multi-layer ML ensemble analyzes live voice streams, scores impersonation risk, and fires alerts — 
+            Multi-layer ML ensemble analyzes live voice streams, scores impersonation risk, and fires alerts —
             all under 400 milliseconds.
           </motion.p>
 
@@ -862,7 +860,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm text-[var(--color-sentinel-text-dim)]">
             <Shield className="w-4 h-4 text-[var(--color-accent-primary)]" />
-            VoiceSentinel — SIH26104
+            VoiceGuardAI — SIH26104
           </div>
           <p className="text-xs text-[var(--color-sentinel-text-dim)]">
             AI-Powered Voice Cloning Detection & Prevention

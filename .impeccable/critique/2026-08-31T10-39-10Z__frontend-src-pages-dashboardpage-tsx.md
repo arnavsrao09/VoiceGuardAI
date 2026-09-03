@@ -28,7 +28,7 @@ slug: frontend-src-pages-dashboardpage-tsx
 
 ### Design Specificity Verdict
 
-**LLM assessment**: The design feels highly authored and specific to the VoiceSentinel product. The dark "cyber-security" aesthetic with neon accents (using the custom `sentinel` CSS variables), the live waveform canvas, and the glowing risk gauge fit the high-stakes deepfake detection domain perfectly. It does not feel like a generic SaaS template.
+**LLM assessment**: The design feels highly authored and specific to the VoiceGuardAI product. The dark "cyber-security" aesthetic with neon accents (using the custom `sentinel` CSS variables), the live waveform canvas, and the glowing risk gauge fit the high-stakes deepfake detection domain perfectly. It does not feel like a generic SaaS template.
 
 **Deterministic scan**: The automated `detect.mjs` scan returned 0 findings (clean). The design correctly avoids banned patterns like gradient text and generic floating cards. 
 

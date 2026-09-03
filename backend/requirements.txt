@@ -85,3 +85,9 @@ huggingface_hub
 pytest
 pytest-asyncio
 httpx
+
+# -----------------------------
+# Auth
+# -----------------------------
+passlib[bcrypt]
+python-jose[cryptography]

@@ -17,6 +17,7 @@ app/ml/models/*.bin
 app/ml/models/*.jit
 app/ml/models/*.ckpt
 app/ml/models/ecapa_cache/
+app/ml/models/spkrec-ecapa-voxceleb/
 
 # IDE
 .vscode/

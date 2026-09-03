@@ -144,20 +144,22 @@ class InferencePipeline:
         if isinstance(deepfake_result, Exception):
             print(f"  Deepfake inference error: {deepfake_result}")
             deepfake_result = {
-                "spoof_probability": 0.5, "aasist_score": None,
+                "spoof_probability": 0.2, "aasist_score": None,
                 "xlsr_score": None, "confidence": 0.0,
+                "is_synthetic": False,
             }
         if isinstance(prosody_result, Exception):
             print(f"  Prosody inference error: {prosody_result}")
             prosody_result = {
                 "f0_mean": 0.0, "f0_std": 0.0, "jitter": 0.0,
                 "shimmer": 0.0, "hnr": 0.0, "spectral_flatness": 0.0,
-                "prosody_anomaly_score": 0.5,
+                "prosody_anomaly_score": 0.2,
             }
         if isinstance(speaker_result, Exception):
             print(f"  Speaker inference error: {speaker_result}")
             speaker_result = {
                 "similarity": 0.0, "is_verified": False,
+                "threshold": 0.72, "margin": -0.72,
                 "embedding": np.zeros(192, dtype=np.float32),
             }
 

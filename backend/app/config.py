@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Thresholds
     vad_threshold: float = 0.5
     deepfake_threshold: float = 0.6
-    speaker_verification_threshold: float = 0.75
+    speaker_verification_threshold: float = 0.72
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

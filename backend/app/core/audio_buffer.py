@@ -43,3 +43,52 @@ class CircularAudioBuffer:
         with self.lock:
             self.buffer.clear()
             self.samples_since_last_hop = 0
+
+
+class VADSpeechAccumulator:
+    """Accumulate VAD-filtered speech for speaker embeddings (1–3 s windows).
+
+    Live WebSocket frames are ~256 ms. ECAPA verification waits until enough
+    speech has been collected, then refreshes at a 1 s speech hop so
+    ``speaker_verified`` is not decided on every frame.
+    """
+
+    def __init__(
+        self,
+        min_sec: float = 1.5,
+        max_sec: float = 3.0,
+        hop_sec: float = 1.0,
+        sample_rate: int = 16000,
+    ):
+        self.sample_rate = sample_rate
+        self.min_samples = int(min_sec * sample_rate)
+        self.max_samples = int(max_sec * sample_rate)
+        self.hop_samples = int(hop_sec * sample_rate)
+        self.buffer = deque(maxlen=self.max_samples)
+        self.samples_since_emit = 0
+        self.lock = threading.Lock()
+
+    def add_frames(self, frames: np.ndarray):
+        with self.lock:
+            flat = frames.flatten()
+            self.buffer.extend(flat)
+            self.samples_since_emit += len(flat)
+
+    def ready_for_embed(self) -> bool:
+        with self.lock:
+            if len(self.buffer) < self.min_samples:
+                return False
+            return self.samples_since_emit >= self.hop_samples
+
+    def get_window(self) -> np.ndarray:
+        with self.lock:
+            self.samples_since_emit = 0
+            if not self.buffer:
+                return np.zeros(0, dtype=np.float32)
+            return np.array(self.buffer, dtype=np.float32)
+
+    def clear(self):
+        with self.lock:
+            self.buffer.clear()
+            self.samples_since_emit = 0
+

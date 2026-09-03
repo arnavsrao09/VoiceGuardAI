@@ -5,13 +5,18 @@ import { Shield, Menu, X, Activity, Users, Bell, Settings } from 'lucide-react';
 
 const navLinks = [
   { to: '/dashboard', label: 'Dashboard', icon: Activity },
+  { to: '/keys', label: 'API Keys', icon: Shield },
   { to: '/speakers', label: 'Speaker Profiles', icon: Users },
   { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/settings', label: 'Settings', icon: Settings },
 ];
+
+import { useNavigate } from 'react-router-dom';
+import { removeAuthToken } from '../../lib/api';
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const hasToken = !!localStorage.getItem('token');
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isLanding = location.pathname === '/';
@@ -81,14 +86,24 @@ export default function Navbar() {
 
         {/* CTA / Mobile Toggle */}
         <div className="flex items-center gap-3">
-          {isLanding && (
+          {!hasToken ? (
             <Link
-              to="/dashboard"
+              to="/auth"
               className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-full bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] text-white text-sm font-semibold shadow-lg shadow-[var(--color-accent-primary-glow)] hover:shadow-xl hover:scale-105 transition-all duration-200"
             >
               <Activity className="w-4 h-4" />
-              Launch Dashboard
+              Organization Login
             </Link>
+          ) : (
+            <button
+              onClick={() => {
+                removeAuthToken();
+                navigate('/');
+              }}
+              className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-full border border-red-500/50 text-red-400 text-sm font-semibold hover:bg-red-500/10 transition-all duration-200"
+            >
+              Log Out
+            </button>
           )}
 
           {/* Mobile hamburger */}

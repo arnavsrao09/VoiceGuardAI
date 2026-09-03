@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.db import crud
 from app.api import schemas
 from app.ml.pipeline import InferencePipeline
+from app.api.deps import SECRET_KEY, ALGORITHM
+from jose import jwt, JWTError
 import uuid
 import io
 import numpy as np
@@ -11,14 +13,32 @@ import librosa
 
 router = APIRouter()
 
+def _extract_org_id_from_request(request: Request) -> uuid.UUID | None:
+    """Optionally extract organization_id from JWT Bearer token. Returns None if no valid token."""
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        org_id_str = payload.get("sub")
+        if org_id_str:
+            return uuid.UUID(org_id_str)
+    except (JWTError, ValueError):
+        pass
+    return None
+
 @router.post("/speakers/enroll", response_model=schemas.SpeakerProfileResponse)
 async def enroll_speaker(
+    request: Request,
     user_id: str = Form(...),
     name: str = Form(...),
     language: str = Form("en"),
     audio: UploadFile = File(...),
     db: AsyncSession = Depends(get_db)
 ):
+    organization_id = _extract_org_id_from_request(request)
+    
     try:
         audio_bytes = await audio.read()
         
@@ -28,7 +48,7 @@ async def enroll_speaker(
         # Extract ECAPA-TDNN embedding
         pipeline = InferencePipeline.get_instance()
         embedding_result = pipeline._extract_speaker_only(y)
-        
+
         if embedding_result.get("embedding") is not None:
             embedding = embedding_result["embedding"].tolist()
         else:
@@ -40,12 +60,19 @@ async def enroll_speaker(
 
     db_profile = await crud.create_voice_profile(
         db=db, 
-        user_id=user_id, 
+        organization_id=organization_id,
+        external_user_id=user_id, 
         name=name, 
         embedding=embedding,
         language=language
     )
-    return db_profile
+    return {
+        "id": db_profile.id,
+        "user_id": db_profile.external_user_id,
+        "name": db_profile.name,
+        "language": db_profile.language,
+        "created_at": db_profile.created_at,
+    }
 
 @router.get("/speakers/{profile_id}", response_model=schemas.SpeakerProfileResponse)
 async def get_speaker(profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)):

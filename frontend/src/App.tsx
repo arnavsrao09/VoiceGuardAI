@@ -5,6 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import SpeakerProfilesPage from './pages/SpeakerProfilesPage';
 import AlertsPage from './pages/AlertsPage';
 import SettingsPage from './pages/SettingsPage';
+import AuthPage from './pages/AuthPage';
+import ApiKeysPage from './pages/ApiKeysPage';
 
 function App() {
   return (
@@ -18,7 +20,9 @@ function App() {
       {/* Routes */}
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/auth" element={<AuthPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/keys" element={<ApiKeysPage />} />
         <Route path="/speakers" element={<SpeakerProfilesPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
