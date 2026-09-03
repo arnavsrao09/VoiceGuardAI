@@ -523,6 +523,7 @@ export default function DashboardPage() {
     isConnected,
     riskData,
     alerts,
+    modelLogs,
     recordingTime,
     graceCountdown,
     error,
@@ -973,6 +974,30 @@ export default function DashboardPage() {
                     'AASIST (Graph Attention) + XLS-R 300M (Multilingual SSL) + ECAPA-TDNN + Parselmouth Prosody'
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Live Model Inference Logs Terminal */}
+            <div className="mt-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
+              <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3 flex items-center gap-2">
+                Live Pipeline Logs <span className="animate-pulse w-2 h-2 rounded-full bg-[var(--color-risk-low)]"></span>
+              </h3>
+              <div className="bg-[#1e1e2e] rounded-xl p-4 h-64 overflow-y-auto font-mono text-xs text-[#a6accd] flex flex-col gap-2">
+                {modelLogs.length === 0 ? (
+                   <span className="text-gray-500 italic">Waiting for audio stream...</span>
+                ) : (
+                  modelLogs.map((log, idx) => (
+                    <div key={`${log.timestamp}-${log.chunk_index}-${idx}`} className="border-b border-[#313244] pb-2 mb-2 last:border-0 last:mb-0 last:pb-0">
+                      <span className="text-[#89b4fa]">[{log.timestamp}]</span> <span className="text-[#cba6f7]">Chunk #{log.chunk_index}</span>
+                      <br/>
+                      <span className="text-[#f38ba8]">Deepfake (AASIST):</span> {log.details.aasist_score?.toFixed(4) ?? 'N/A'} | <span className="text-[#f38ba8]">XLS-R:</span> {log.details.xlsr_score?.toFixed(4) ?? 'N/A'}
+                      <br/>
+                      <span className="text-[#a6e3a1]">Speaker:</span> Verified: {log.details.speaker_verified ? 'Yes' : 'No'} | Sim: {log.details.speaker_similarity !== undefined ? log.details.speaker_similarity.toFixed(4) : 'N/A'}
+                      <br/>
+                      <span className="text-[#f9e2af]">Prosody:</span> f0_mean: {log.details.prosody.f0_mean.toFixed(2)}, jitter: {log.details.prosody.jitter.toFixed(4)}, hnr: {log.details.prosody.hnr.toFixed(2)}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </motion.div>

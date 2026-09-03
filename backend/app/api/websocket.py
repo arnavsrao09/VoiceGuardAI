@@ -51,6 +51,9 @@ async def websocket_endpoint(websocket: WebSocket):
     session_risk_scores: list[float] = []
     enrollment_embedding: np.ndarray | None = None
     profile_name: str | None = None
+    
+    session_max_alert_reason: str | None = None
+    session_max_level: str = "LOW"
 
     pipeline = InferencePipeline.get_instance()
 
@@ -151,14 +154,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             .values(avg_risk_score=round(float(result["score"]), 3))
                         )
                         await db.execute(stmt)
+                        
                         if result["should_alert"] and result["alert_reason"]:
-                            await crud.create_alert(
-                                db,
-                                session_id=session_id,
-                                severity=result["level"].upper(),
-                                trigger_reason=result["alert_reason"],
-                                risk_score=result["score"]
-                            )
+                            session_max_alert_reason = result["alert_reason"]
+                            session_max_level = result["level"].upper()
+                            
                         await db.commit()
 
                     await websocket.send_json(result)
@@ -188,5 +188,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 sess.status = "ended"
                 if session_risk_scores:
                     # Save final risk score when user stops recording
-                    sess.avg_risk_score = round(float(session_risk_scores[-1]), 3)
+                    final_score = round(float(session_risk_scores[-1]), 3)
+                    sess.avg_risk_score = final_score
+                    
+                    if session_max_alert_reason:
+                        await crud.create_alert(
+                            db,
+                            session_id=session_id,
+                            severity=session_max_level,
+                            trigger_reason=session_max_alert_reason,
+                            risk_score=final_score
+                        )
                 await db.commit()
