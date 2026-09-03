@@ -300,19 +300,36 @@ class SpeakerVerifier:
         return self._l2_normalize(mean_emb)
 
     @staticmethod
-    def _l2_normalize(v: np.ndarray) -> np.ndarray:
-        """L2-normalise a vector to unit length with NaN safety."""
+    def _l2_normalize(v: np.ndarray | list | str | None) -> np.ndarray:
+        """L2-normalise a vector to unit length with full NaN & string parsing safety."""
         if v is None:
             return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
-        v = np.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
-        if v.size != SpeakerVerifier.EMBEDDING_DIM:
-            out = np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
-            ncopy = min(v.size, SpeakerVerifier.EMBEDDING_DIM)
-            out[:ncopy] = v.flatten()[:ncopy]
-            v = out
-        if not np.isfinite(v).all():
+
+        if isinstance(v, str):
+            import json
+            try:
+                v = json.loads(v)
+            except Exception:
+                try:
+                    # Strip brackets if string like "[0.1, 0.2, ...]"
+                    clean_str = v.strip().strip("[]").strip("()")
+                    v = [float(x) for x in clean_str.split(",") if x.strip()]
+                except Exception:
+                    print("  [WARN] Failed to parse string embedding.")
+                    return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
+
+        arr = np.asarray(v, dtype=np.float32).reshape(-1)
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+        if arr.size != SpeakerVerifier.EMBEDDING_DIM:
+            print(f"  [WARN] Invalid embedding size {arr.size} (expected {SpeakerVerifier.EMBEDDING_DIM}); rejecting.")
             return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
-        n = norm(v)
+
+        if not np.isfinite(arr).all():
+            return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
+
+        n = float(norm(arr))
         if n > _ZERO_NORM and not np.isnan(n) and not np.isinf(n):
-            return v / n
+            return (arr / n).astype(np.float32)
+
         return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)

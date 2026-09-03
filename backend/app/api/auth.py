@@ -4,7 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.db import crud
 from pydantic import BaseModel, EmailStr
-from app.api.deps import get_password_hash, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.api.deps import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    get_current_org,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+)
+from app.db.models import Organization
 from datetime import timedelta
 import uuid
 
@@ -53,3 +60,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         data={"sub": str(org.id)}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/me", response_model=OrgResponse)
+async def get_me(org: Organization = Depends(get_current_org)):
+    return org

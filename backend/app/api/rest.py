@@ -45,14 +45,14 @@ async def enroll_speaker(
         # Load audio and resample to 16000Hz mono
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
         
-        # Extract ECAPA-TDNN embedding
+        # Extract ECAPA-TDNN averaged enrollment embedding
         pipeline = InferencePipeline.get_instance()
-        embedding_result = pipeline._extract_speaker_only(y)
+        emb = pipeline.verifier.extract_enrollment_embedding(y)
 
-        if embedding_result.get("embedding") is not None:
-            embedding = embedding_result["embedding"].tolist()
+        if float(np.linalg.norm(emb)) > 1e-6:
+            embedding = emb.tolist()
         else:
-            raise ValueError("Embedding extraction returned None.")
+            raise ValueError("Embedding extraction returned zero vector.")
             
     except Exception as e:
         print(f"Enrollment Error: {e}")
@@ -115,7 +115,7 @@ async def verify_speaker(
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
 
         pipeline = InferencePipeline.get_instance()
-        enrolled_emb = np.array(profile.embedding, dtype=np.float32)
+        enrolled_emb = pipeline.verifier._l2_normalize(profile.embedding)
         res = pipeline.verifier.verify_against_profile(y, enrolled_emb)
 
         return {
@@ -124,7 +124,7 @@ async def verify_speaker(
             "similarity": res["similarity"],
             "match_percentage": round(max(0, res["similarity"]) * 100, 1),
             "is_verified": res["is_verified"],
-            "threshold": 0.75
+            "threshold": settings.speaker_verification_threshold
         }
     except Exception as e:
         print(f"Verification Error: {e}")

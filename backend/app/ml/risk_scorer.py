@@ -115,9 +115,13 @@ class RiskScorer:
 
         if has_enrollment:
             is_same_speaker = speaker_match >= self.speaker_threshold
+            # ECAPA-TDNN biological Equal Error Rate (EER) cutoff is ~0.30 - 0.35
+            # We use 0.35 to distinctively separate natural variations of the same 
+            # speaker from a completely different identity.
+            is_biologically_same = speaker_match >= 0.35
 
             if is_same_speaker and not is_synthetic:
-                # ── Q1: Legitimate Enrolled User ──────────────────────
+                # ── Q1: Legitimate Enrolled User (Perfect Match) ──────────────
                 threat_category = ThreatCategory.GENUINE_ENROLLED
                 level = self.LEVEL_LOW
                 raw_score = deepfake_prob * 0.40  # stays safely in [0.0, 0.20]
@@ -125,17 +129,30 @@ class RiskScorer:
                 reason = "Legitimate enrolled speaker with natural human voice."
                 should_alert = False
 
-            elif not is_same_speaker and not is_synthetic:
-                # ── Q2: Genuine Human, Different Identity ─────────────
+            elif is_biologically_same and not is_synthetic:
+                # ── Borderline Match (Same Speaker, Natural Variation/Noise) ──
+                threat_category = ThreatCategory.GENUINE_ENROLLED
+                level = self.LEVEL_LOW
+                # Scale score gracefully between 0.15 and 0.35
+                margin = self.speaker_threshold - 0.35
+                ratio = (self.speaker_threshold - speaker_match) / margin if margin > 0 else 0
+                raw_score = 0.15 + min(1.0, max(0.0, ratio)) * 0.20
+                action = ProtectionAction.ALLOW
+                reason = f"Verified speaker (similarity: {speaker_match:.2f}). Natural variation likely."
+                should_alert = False
+
+            elif not is_biologically_same and not is_synthetic:
+                # ── Q2: Genuine Human, Different Identity (Imposter) ──────────
                 threat_category = ThreatCategory.GENUINE_DIFFERENT
-                level = self.LEVEL_MEDIUM
-                # Distinguish identity failure from deepfake:
-                # Fixed medium level (0.45 - 0.55), explicit mismatch tag
-                raw_score = 0.45 + (1.0 - max(0.0, speaker_match)) * 0.10
+                level = self.LEVEL_HIGH
+                # A definite imposter (different human) should be treated as high risk
+                # Scale from 0.65 to 0.75 based on how low the similarity is
+                ratio = (0.35 - max(0.0, speaker_match)) / 0.35
+                raw_score = 0.65 + min(1.0, max(0.0, ratio)) * 0.10
                 action = ProtectionAction.IDENTITY_MISMATCH
                 reason = (
                     f"Identity mismatch: Human voice detected, but does not match "
-                    f"enrolled profile (similarity: {speaker_match:.2f} < {self.speaker_threshold:.2f})."
+                    f"enrolled profile (similarity: {speaker_match:.2f} < 0.35)."
                 )
                 should_alert = True
 
@@ -182,7 +199,8 @@ class RiskScorer:
                 should_alert = True
 
         # Mid-call speaker drift override
-        if speaker_drift >= 0.40:
+        # A drift of >= 0.70 means similarity to the session centroid dropped below 0.30
+        if speaker_drift >= 0.70:
             if level in (self.LEVEL_LOW, self.LEVEL_MEDIUM):
                 level = self.LEVEL_HIGH
                 raw_score = max(raw_score, 0.72)
@@ -226,7 +244,7 @@ class RiskScorer:
             "chunk_index": self._chunk_count,
             "raw_components": {
                 "deepfake": round(deepfake_prob, 4),
-                "speaker": round(speaker_match, 4) if has_enrollment else 1.0,
+                "speaker_match": round(max(0.0, speaker_match), 4) if has_enrollment else 1.0,
                 "speaker_drift": round(speaker_drift, 4),
                 "prosody": round(prosody_anomaly, 4),
                 "context": round(context_risk, 4),

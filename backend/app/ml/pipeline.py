@@ -97,6 +97,7 @@ class InferencePipeline:
         audio: np.ndarray,
         enrollment_embedding: np.ndarray | None = None,
         session_embeddings: list[np.ndarray] | None = None,
+        skip_speaker: bool = False,
     ) -> dict:
         """Run the full ML pipeline on one audio window.
 
@@ -125,7 +126,15 @@ class InferencePipeline:
         deepfake_task = asyncio.to_thread(self.detector.predict, audio)
         prosody_task = asyncio.to_thread(self.prosody.analyze, audio)
 
-        if enrollment_embedding is not None:
+        if skip_speaker:
+            async def mock_speaker_task():
+                return {
+                    "similarity": 0.0, "is_verified": False,
+                    "threshold": 0.72, "margin": -0.72,
+                    "embedding": None,
+                }
+            speaker_task = asyncio.create_task(mock_speaker_task())
+        elif enrollment_embedding is not None:
             speaker_task = asyncio.to_thread(
                 self.verifier.verify_against_profile, audio, enrollment_embedding
             )

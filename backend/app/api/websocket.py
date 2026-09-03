@@ -75,6 +75,7 @@ async def websocket_endpoint(websocket: WebSocket):
     stable_speaker_sim: float | None = None
     stable_speaker_verified = False
     speaker_ema_alpha = 0.4
+    session_speaker_drift = 0.0
 
     pipeline = InferencePipeline.get_instance()
 
@@ -84,10 +85,16 @@ async def websocket_endpoint(websocket: WebSocket):
             profile_uuid = uuid.UUID(profile_id_param)
             async with AsyncSessionLocal() as db:
                 prof = await crud.get_voice_profile(db, profile_uuid, organization_id=organization_id)
+                if not prof and organization_id is not None:
+                    # Fallback lookup in case profile was created without org scoping
+                    prof = await crud.get_voice_profile(db, profile_uuid)
                 if prof and prof.embedding:
-                    enrollment_embedding = np.array(prof.embedding, dtype=np.float32)
+                    enrollment_embedding = pipeline.verifier._l2_normalize(prof.embedding)
                     profile_name = prof.name
-                    print(f"[WS] Loaded speaker profile '{prof.name}' ({profile_uuid})")
+                    print(
+                        f"[WS] Loaded speaker profile '{prof.name}' ({profile_uuid}) "
+                        f"shape={enrollment_embedding.shape}, norm={np.linalg.norm(enrollment_embedding):.4f}"
+                    )
         except Exception as e:
             print(f"[WS] Failed to load profile {profile_id_param}: {e}")
 
@@ -121,31 +128,48 @@ async def websocket_endpoint(websocket: WebSocket):
                     speaker_speech.add_frames(audio_array)
 
                 # Speaker ECAPA: only on 1.5–3 s of accumulated VAD speech, 1 s hop.
-                if enrollment_embedding is not None and speaker_speech.ready_for_embed():
+                if speaker_speech.ready_for_embed():
                     speech_window = speaker_speech.get_window()
                     if len(speech_window) > 0:
-                        speaker_result = await asyncio.to_thread(
-                            pipeline.verifier.verify_against_profile,
-                            speech_window,
-                            enrollment_embedding,
-                        )
-                        raw_sim = float(speaker_result.get("similarity", 0.0))
-                        if np.isnan(raw_sim) or np.isinf(raw_sim):
-                            raw_sim = 0.0
-                        if stable_speaker_sim is None:
-                            stable_speaker_sim = raw_sim
-                        else:
-                            stable_speaker_sim = (
-                                speaker_ema_alpha * raw_sim
-                                + (1.0 - speaker_ema_alpha) * stable_speaker_sim
+                        if enrollment_embedding is not None:
+                            speaker_result = await asyncio.to_thread(
+                                pipeline.verifier.verify_against_profile,
+                                speech_window,
+                                enrollment_embedding,
                             )
-                        th = float(
-                            speaker_result.get("threshold")
-                            or settings.speaker_verification_threshold
-                        )
-                        stable_speaker_verified = bool(stable_speaker_sim >= th)
+                            raw_sim = float(speaker_result.get("similarity", 0.0))
+                            if np.isnan(raw_sim) or np.isinf(raw_sim):
+                                raw_sim = 0.0
+                            if stable_speaker_sim is None:
+                                stable_speaker_sim = raw_sim
+                            else:
+                                stable_speaker_sim = (
+                                    speaker_ema_alpha * raw_sim
+                                    + (1.0 - speaker_ema_alpha) * stable_speaker_sim
+                                )
+                            th = float(
+                                speaker_result.get("threshold")
+                                or settings.speaker_verification_threshold
+                            )
+                            stable_speaker_verified = bool(stable_speaker_sim >= th)
+                            print(
+                                f"[SPEAKER UPDATE] raw_sim={raw_sim:.4f}, "
+                                f"ema_sim={stable_speaker_sim:.4f}, "
+                                f"threshold={th:.4f}, "
+                                f"verified={stable_speaker_verified}"
+                            )
+                        else:
+                            emb = await asyncio.to_thread(
+                                pipeline.verifier.extract_embedding,
+                                speech_window
+                            )
+                            speaker_result = {"embedding": emb}
+
                         emb = speaker_result.get("embedding")
                         if emb is not None:
+                            if len(session_embeddings) >= 2:
+                                session_speaker_drift = pipeline.verifier.detect_drift(emb, session_embeddings)
+                            
                             session_embeddings.append(emb)
                             if len(session_embeddings) > 20:
                                 session_embeddings = session_embeddings[-20:]
@@ -158,8 +182,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # overlaid from the aggregated speech evidence above.
                     ml_result = await pipeline.process_chunk(
                         window,
-                        enrollment_embedding=None,
-                        session_embeddings=session_embeddings,
+                        skip_speaker=True
                     )
 
                     th = settings.speaker_verification_threshold
@@ -177,7 +200,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         deepfake_prob=ml_result["deepfake"]["spoof_probability"],
                         speaker_match=ml_result["speaker"]["similarity"],
                         prosody_anomaly=ml_result["prosody"]["prosody_anomaly_score"],
-                        speaker_drift=ml_result["speaker_drift"],
+                        speaker_drift=session_speaker_drift,
                         deepfake_confidence=ml_result["deepfake"]["confidence"],
                         has_enrollment=(
                             enrollment_embedding is not None
@@ -201,7 +224,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "xlsr_score": ml_result["deepfake"].get("xlsr_score"),
                         "prosody": ml_result["prosody"],
                         "speaker_verified": ml_result["speaker"]["is_verified"],
-                        "speaker_similarity": ml_result["speaker"]["similarity"],
+                        "speaker_similarity": max(0.0, float(ml_result["speaker"]["similarity"])),
                     }
 
                     # Continuously persist latest risk score to DetectionSession in DB

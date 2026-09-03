@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch, setAuthToken } from '../lib/api';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { apiFetch, setAuthToken, getAuthToken } from '../lib/api';
 import { ShieldAlert, User, Lock, Mail, Building2 } from 'lucide-react';
 
 export default function AuthPage() {
@@ -12,6 +12,15 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const fromPath = (location.state as any)?.from?.pathname || '/dashboard';
+
+  useEffect(() => {
+    if (getAuthToken()) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,14 +45,31 @@ export default function AuthPage() {
         
         const data = await response.json();
         setAuthToken(data.access_token);
-        navigate('/dashboard');
+        navigate(fromPath, { replace: true });
       } else {
         await apiFetch('/auth/register', {
           method: 'POST',
           body: JSON.stringify({ name, email, password }),
         });
-        setIsLogin(true);
-        setError('Registration successful. Please log in.');
+
+        // Auto-login immediately after registering
+        const formData = new FormData();
+        formData.append('username', email);
+        formData.append('password', password);
+
+        const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setAuthToken(data.access_token);
+          navigate(fromPath, { replace: true });
+        } else {
+          setIsLogin(true);
+          setError('Registration successful. Please log in.');
+        }
       }
     } catch (err: any) {
       setError(err.message);
