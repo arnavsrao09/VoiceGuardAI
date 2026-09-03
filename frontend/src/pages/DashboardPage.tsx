@@ -840,27 +840,6 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => triggerCountermeasure("Voice Callback Initiated")}
-                    className="px-3.5 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition-all"
-                  >
-                    📞 Initiate Callback Verification
-                  </button>
-                  <button
-                    onClick={() => triggerCountermeasure("Push MFA Sent to Enrolled Mobile")}
-                    className="px-3.5 py-2 rounded-xl bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)] text-xs font-bold text-[var(--color-accent-primary)] hover:brightness-110 transition-all"
-                  >
-                    🔐 Request Push MFA
-                  </button>
-                  <button
-                    onClick={() => triggerCountermeasure("Escalated to Supervisor Security Desk")}
-                    className="px-3.5 py-2 rounded-xl bg-[var(--color-sentinel-surface-3)] border border-[var(--color-sentinel-border)] text-xs font-bold text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
-                  >
-                    ⚠️ Escalate to Supervisor
-                  </button>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>
