@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch, setAuthToken, getAuthToken } from '../lib/api';
-import { ShieldAlert, User, Lock, Mail, Building2 } from 'lucide-react';
+import { ShieldAlert, Lock, Mail, Building2 } from 'lucide-react';
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);

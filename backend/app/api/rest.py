@@ -5,6 +5,7 @@ from app.db import crud
 from app.api import schemas
 from app.ml.pipeline import InferencePipeline
 from app.api.deps import SECRET_KEY, ALGORITHM
+from app.config import settings
 from jose import jwt, JWTError
 import uuid
 import io

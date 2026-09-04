@@ -644,7 +644,8 @@ export default function DashboardPage() {
   }, [riskData, recordingTime, stopMonitoring, fetchSessions]);
 
   const handleStartMonitoring = (file?: File | React.MouseEvent) => {
-    const profId = selectedProfileId || undefined;
+    if (!selectedProfileId) return;
+    const profId = selectedProfileId;
     if (file && file instanceof File) {
       startMonitoring(file, profId);
     } else {
@@ -652,14 +653,15 @@ export default function DashboardPage() {
     }
   };
 
-  // Preserve last valid score when stopped
-  const currentScore = riskData ? riskData.score : 0.08;
-  const deepfakeSubScore = riskData ? riskData.raw_components.deepfake : 0.05;
-  const speakerMatchScore = riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
-  const speakerSubScore = riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
-  const prosodySubScore = riskData ? riskData.raw_components.prosody : 0.10;
-  const latencyMs = riskData ? riskData.latency_ms : 0;
-  const isHighRisk = currentScore >= 0.6;
+  // Return to default idle score when monitoring stops
+  const DEFAULT_IDLE_SCORE = 0.00;
+  const currentScore = isMonitoring && riskData ? riskData.score : DEFAULT_IDLE_SCORE;
+  const deepfakeSubScore = isMonitoring && riskData ? riskData.raw_components.deepfake : 0.00;
+  const speakerMatchScore = isMonitoring && riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
+  const speakerSubScore = isMonitoring && riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
+  const prosodySubScore = isMonitoring && riskData ? riskData.raw_components.prosody : 0.00;
+  const latencyMs = isMonitoring && riskData ? riskData.latency_ms : 0;
+  const isHighRisk = isMonitoring && currentScore >= 0.6;
 
   const triggerCountermeasure = (action: string) => {
     setCountermeasureStatus(`Action Initiated: ${action} — Session Terminated`);
@@ -688,7 +690,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
                 Monitoring Dashboard
-                {riskData?.profile_name && (
+                {isMonitoring && riskData?.profile_name && (
                   <span className="text-xs px-2.5 py-1 rounded-lg bg-[rgba(0,229,200,0.12)] text-[var(--color-accent-primary)] font-semibold border border-[rgba(0,229,200,0.2)]">
                     Target Speaker: {riskData.profile_name}
                   </span>
@@ -697,7 +699,9 @@ export default function DashboardPage() {
               <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-0.5">
                 {isMonitoring
                   ? `Live WebSocket stream active (${isConnected ? 'Backend Connected' : 'Connecting...'}) — ${formatTime(recordingTime)}`
-                  : 'Select an enrolled speaker profile (optional) and click Start Monitoring'
+                  : selectedProfileId
+                  ? 'Speaker profile selected. Click Start Monitoring to begin.'
+                  : 'Select an enrolled speaker profile to enable monitoring'
                 }
               </p>
               {error && (
@@ -717,13 +721,15 @@ export default function DashboardPage() {
                   className={`px-3 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-all ${
                     isMonitoring
                       ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-dim)] border-[var(--color-sentinel-border)] cursor-not-allowed'
+                      : !selectedProfileId
+                      ? 'bg-[var(--color-sentinel-surface)] text-[var(--color-sentinel-text)] border-[var(--color-accent-primary)] ring-1 ring-[var(--color-accent-primary-dim)]'
                       : 'bg-[var(--color-sentinel-surface)] text-[var(--color-sentinel-text)] border-[var(--color-sentinel-border)] hover:border-[var(--color-accent-primary)]'
                   }`}
                 >
-                  <option value="">General Detection (No Enrolled Profile)</option>
+                  <option value="">Select a Speaker Profile</option>
                   {speakerProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      Speaker Profile: {p.name} ({p.user_id})
+                      Speaker Profile: {p.name}
                     </option>
                   ))}
                 </select>
@@ -731,7 +737,13 @@ export default function DashboardPage() {
 
               <button
                 onClick={() => setShowUpload(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-sentinel-border)] text-sm font-medium text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
+                disabled={isMonitoring || !selectedProfileId}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-sentinel-border)] text-sm font-medium transition-all ${
+                  isMonitoring || !selectedProfileId
+                    ? 'text-[var(--color-sentinel-text-dim)] bg-[var(--color-sentinel-surface-2)] cursor-not-allowed opacity-50'
+                    : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)]'
+                }`}
+                title={!selectedProfileId ? 'Please select a speaker profile first' : undefined}
               >
                 <Upload className="w-4 h-4" />
                 Upload File
@@ -739,16 +751,20 @@ export default function DashboardPage() {
 
               <button
                 onClick={isMonitoring ? handleStopMonitoring : handleStartMonitoring}
+                disabled={!isMonitoring && !selectedProfileId}
                 className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   isMonitoring
                     ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-risk-critical)] border border-[var(--color-risk-critical)] shadow-lg hover:bg-[rgba(239,68,68,0.1)]'
+                    : !selectedProfileId
+                    ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)] border border-[var(--color-sentinel-border)] cursor-not-allowed opacity-50'
                     : 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] shadow-lg hover:brightness-110'
                 }`}
                 style={{
-                  boxShadow: isMonitoring
+                  boxShadow: isMonitoring || !selectedProfileId
                     ? 'none'
                     : '0 6px 24px rgba(0,229,200,0.2)',
                 }}
+                title={!isMonitoring && !selectedProfileId ? 'Please select a speaker profile to start monitoring' : undefined}
               >
                 {isMonitoring ? (
                   <>

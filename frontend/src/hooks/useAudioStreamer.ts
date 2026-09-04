@@ -96,6 +96,8 @@ export function useAudioStreamer() {
     setIsMonitoring(false);
     setIsConnected(false);
     setGraceCountdown(null);
+    setRiskData(null);
+    setRiskHistory([]);
 
     if (graceTimerRef.current) {
       clearInterval(graceTimerRef.current);
