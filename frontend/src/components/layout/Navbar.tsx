@@ -109,9 +109,10 @@ export default function Navbar() {
           {!hasToken ? (
             <Link
               to="/auth"
-              className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-full bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] text-white text-sm font-semibold shadow-lg shadow-[var(--color-accent-primary-glow)] hover:shadow-xl hover:scale-105 transition-all duration-200"
+              className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-full bg-gradient-to-r from-[#0b3332] to-[#261747] text-white border border-[#00e5c8]/30 hover:border-[#00e5c8]/70 hover:from-[#0f403f] hover:to-[#321f5c] text-sm font-semibold shadow-md hover:scale-105 transition-all duration-200"
+              style={{ boxShadow: '0 4px 20px rgba(0, 229, 200, 0.12)' }}
             >
-              <Activity className="w-4 h-4" />
+              <Activity className="w-4 h-4 text-[var(--color-accent-primary)]" />
               Organization Login
             </Link>
           ) : (

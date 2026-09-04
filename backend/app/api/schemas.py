@@ -59,10 +59,16 @@ class AlertResponse(BaseModel):
     trigger_reason: str
     risk_score: float
     created_at: datetime
+    acknowledged_at: Optional[datetime] = None
+    action_taken: Optional[str] = None
     
     @field_serializer("created_at")
     def serialize_alert_dt(self, dt: datetime, _info):
         return _ensure_utc(dt)
+
+    @field_serializer("acknowledged_at")
+    def serialize_ack_dt(self, dt: Optional[datetime], _info):
+        return _ensure_utc(dt) if dt else None
 
     model_config = {"from_attributes": True}
 

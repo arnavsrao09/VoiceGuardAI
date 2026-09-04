@@ -101,6 +101,13 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
 async def list_alerts(db: AsyncSession = Depends(get_db)):
     return await crud.get_all_alerts(db)
 
+@router.post("/alerts/{alert_id}/acknowledge", response_model=schemas.AlertResponse)
+async def acknowledge_alert(alert_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    alert = await crud.acknowledge_alert(db, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return alert
+
 @router.post("/speakers/verify")
 async def verify_speaker(
     profile_id: uuid.UUID = Form(...),

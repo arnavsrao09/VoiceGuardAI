@@ -441,10 +441,10 @@ function TryItDemo() {
               </button>
               <Link
                 to="/dashboard"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] text-sm font-semibold hover:brightness-110 transition-all"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#093532] to-[#0c2b33] text-white border border-[#00e5c8]/40 hover:border-[#00e5c8]/80 text-sm font-semibold hover:brightness-110 transition-all"
               >
                 Open full dashboard
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 text-[var(--color-accent-primary)]" />
               </Link>
             </div>
           </motion.div>
@@ -710,12 +710,12 @@ export default function LandingPage() {
           >
             <Link
               to="/dashboard"
-              className="group inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-110 hover:scale-[1.03] transition-all duration-200 shadow-lg"
-              style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.25)' }}
+              className="group inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-gradient-to-r from-[#093532] to-[#0c2b33] text-white border border-[#00e5c8]/40 hover:border-[#00e5c8]/80 hover:from-[#0d423e] hover:to-[#103640] font-semibold text-base hover:scale-[1.02] transition-all duration-200 shadow-lg"
+              style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.15)' }}
             >
-              <Activity className="w-5 h-5" />
+              <Activity className="w-5 h-5 text-[var(--color-accent-primary)]" />
               Launch Dashboard
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-[var(--color-accent-primary)]" />
             </Link>
             <a
               href="#try-it"
@@ -845,12 +845,12 @@ export default function LandingPage() {
           </div>
           <Link
             to="/dashboard"
-            className="group inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-110 hover:scale-[1.03] transition-all duration-200 shadow-lg"
-            style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.25)' }}
+            className="group inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-gradient-to-r from-[#093532] to-[#0c2b33] text-white border border-[#00e5c8]/40 hover:border-[#00e5c8]/80 hover:from-[#0d423e] hover:to-[#103640] font-semibold text-base hover:scale-[1.02] transition-all duration-200 shadow-lg"
+            style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.15)' }}
           >
-            <Activity className="w-5 h-5" />
+            <Activity className="w-5 h-5 text-[var(--color-accent-primary)]" />
             Open Dashboard
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-[var(--color-accent-primary)]" />
           </Link>
         </div>
       </section>

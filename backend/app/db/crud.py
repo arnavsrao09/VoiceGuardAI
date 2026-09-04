@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from .models import VoiceProfile, DetectionSession, RiskTelemetry, Alert, Organization, ApiKey
+from datetime import datetime
 import uuid
 
 async def create_organization(db: AsyncSession, name: str, email: str, hashed_password: str):
@@ -154,3 +155,21 @@ async def get_all_alerts(db: AsyncSession, organization_id: uuid.UUID = None):
         query = query.filter(Alert.organization_id == organization_id)
     result = await db.execute(query)
     return result.scalars().all()
+
+async def acknowledge_alert(db: AsyncSession, alert_id: uuid.UUID | str, organization_id: uuid.UUID = None):
+    if isinstance(alert_id, str):
+        try:
+            alert_id = uuid.UUID(alert_id)
+        except ValueError:
+            return None
+    query = select(Alert).filter(Alert.id == alert_id)
+    if organization_id:
+        query = query.filter(Alert.organization_id == organization_id)
+    result = await db.execute(query)
+    alert = result.scalars().first()
+    if alert:
+        alert.acknowledged_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(alert)
+        return alert
+    return None
