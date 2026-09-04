@@ -13,19 +13,23 @@ Each WebSocket connection gets its own:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from jose import jwt, JWTError
 
-from app.core.audio_buffer import CircularAudioBuffer
+from app.core.audio_buffer import CircularAudioBuffer, VADSpeechAccumulator
 from app.ml.pipeline import InferencePipeline
 from app.ml.risk_scorer import RiskScorer
 from app.db.database import AsyncSessionLocal
 from sqlalchemy import select, update
 from app.db import crud
 from app.db.models import DetectionSession
+from app.api.deps import SECRET_KEY, ALGORITHM
+from app.config import settings
 
 router = APIRouter()
 
@@ -40,17 +44,38 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
 
-    # Query param: profile_id
+    # Query params
     query_params = websocket.query_params
     profile_id_param = query_params.get("profile_id")
+    token_param = query_params.get("token")
+
+    # ── Resolve organization_id from JWT token ────────────────────────
+    organization_id: uuid.UUID | None = None
+    if token_param:
+        try:
+            payload = jwt.decode(token_param, SECRET_KEY, algorithms=[ALGORITHM])
+            org_id_str = payload.get("sub")
+            if org_id_str:
+                organization_id = uuid.UUID(org_id_str)
+                print(f"[WS] Authenticated org: {organization_id}")
+        except (JWTError, ValueError) as e:
+            print(f"[WS] Token decode failed (proceeding without org): {e}")
 
     # ── Per-session state ─────────────────────────────────────────────
     buffer = CircularAudioBuffer()
+    speaker_speech = VADSpeechAccumulator(min_sec=1.5, max_sec=3.0, hop_sec=1.0)
     risk_scorer = RiskScorer()
     session_embeddings: list[np.ndarray] = []
     session_risk_scores: list[float] = []
     enrollment_embedding: np.ndarray | None = None
     profile_name: str | None = None
+    
+    session_max_alert_reason: str | None = None
+    session_max_level: str = "LOW"
+    stable_speaker_sim: float | None = None
+    stable_speaker_verified = False
+    speaker_ema_alpha = 0.4
+    session_speaker_drift = 0.0
 
     pipeline = InferencePipeline.get_instance()
 
@@ -59,18 +84,24 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             profile_uuid = uuid.UUID(profile_id_param)
             async with AsyncSessionLocal() as db:
-                prof = await crud.get_voice_profile(db, profile_uuid)
+                prof = await crud.get_voice_profile(db, profile_uuid, organization_id=organization_id)
+                if not prof and organization_id is not None:
+                    # Fallback lookup in case profile was created without org scoping
+                    prof = await crud.get_voice_profile(db, profile_uuid)
                 if prof and prof.embedding:
-                    enrollment_embedding = np.array(prof.embedding, dtype=np.float32)
+                    enrollment_embedding = pipeline.verifier._l2_normalize(prof.embedding)
                     profile_name = prof.name
-                    print(f"[WS] Loaded speaker profile '{prof.name}' ({profile_uuid})")
+                    print(
+                        f"[WS] Loaded speaker profile '{prof.name}' ({profile_uuid}) "
+                        f"shape={enrollment_embedding.shape}, norm={np.linalg.norm(enrollment_embedding):.4f}"
+                    )
         except Exception as e:
             print(f"[WS] Failed to load profile {profile_id_param}: {e}")
 
-    # Create session in DB
+    # Create session in DB with organization_id
     caller_label = f"Stream ({profile_name})" if profile_name else "Live Stream"
     async with AsyncSessionLocal() as db:
-        db_session = await crud.create_detection_session(db, caller_id=caller_label)
+        db_session = await crud.create_detection_session(db, caller_id=caller_label, organization_id=organization_id)
         session_id = db_session.session_id
 
     print(f"[WS] Session {session_id} — client connected (Profile: {profile_name or 'None'})")
@@ -94,34 +125,87 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if is_speech:
                     buffer.add_frames(audio_array)
+                    speaker_speech.add_frames(audio_array)
+
+                # Speaker ECAPA: only on 1.5–3 s of accumulated VAD speech, 1 s hop.
+                if speaker_speech.ready_for_embed():
+                    speech_window = speaker_speech.get_window()
+                    if len(speech_window) > 0:
+                        if enrollment_embedding is not None:
+                            speaker_result = await asyncio.to_thread(
+                                pipeline.verifier.verify_against_profile,
+                                speech_window,
+                                enrollment_embedding,
+                            )
+                            raw_sim = float(speaker_result.get("similarity", 0.0))
+                            if np.isnan(raw_sim) or np.isinf(raw_sim):
+                                raw_sim = 0.0
+                            if stable_speaker_sim is None:
+                                stable_speaker_sim = raw_sim
+                            else:
+                                stable_speaker_sim = (
+                                    speaker_ema_alpha * raw_sim
+                                    + (1.0 - speaker_ema_alpha) * stable_speaker_sim
+                                )
+                            th = float(
+                                speaker_result.get("threshold")
+                                or settings.speaker_verification_threshold
+                            )
+                            stable_speaker_verified = bool(stable_speaker_sim >= th)
+                            print(
+                                f"[SPEAKER UPDATE] raw_sim={raw_sim:.4f}, "
+                                f"ema_sim={stable_speaker_sim:.4f}, "
+                                f"threshold={th:.4f}, "
+                                f"verified={stable_speaker_verified}"
+                            )
+                        else:
+                            emb = await asyncio.to_thread(
+                                pipeline.verifier.extract_embedding,
+                                speech_window
+                            )
+                            speaker_result = {"embedding": emb}
+
+                        emb = speaker_result.get("embedding")
+                        if emb is not None:
+                            if len(session_embeddings) >= 2:
+                                session_speaker_drift = pipeline.verifier.detect_drift(emb, session_embeddings)
+                            
+                            session_embeddings.append(emb)
+                            if len(session_embeddings) > 20:
+                                session_embeddings = session_embeddings[-20:]
 
                 # ── Run inference when buffer is ready ────────────────
                 if buffer.is_ready_for_inference():
                     window = buffer.get_window()
 
-                    # Run the full ML pipeline (concurrent)
+                    # Deepfake/prosody on the hop window. Speaker identity is
+                    # overlaid from the aggregated speech evidence above.
                     ml_result = await pipeline.process_chunk(
                         window,
-                        enrollment_embedding=enrollment_embedding,
-                        session_embeddings=session_embeddings,
+                        skip_speaker=True
                     )
 
-                    # Track embeddings for drift detection
-                    emb = ml_result["speaker"].get("embedding")
-                    if emb is not None:
-                        session_embeddings.append(emb)
-                        # Keep only last 20 embeddings to bound memory
-                        if len(session_embeddings) > 20:
-                            session_embeddings = session_embeddings[-20:]
+                    th = settings.speaker_verification_threshold
+                    if enrollment_embedding is not None and stable_speaker_sim is not None:
+                        ml_result["speaker"]["similarity"] = round(float(stable_speaker_sim), 4)
+                        ml_result["speaker"]["is_verified"] = bool(stable_speaker_verified)
+                        ml_result["speaker"]["threshold"] = round(float(th), 4)
+                        ml_result["speaker"]["margin"] = round(float(stable_speaker_sim - th), 4)
+                    else:
+                        ml_result["speaker"]["similarity"] = 0.0
+                        ml_result["speaker"]["is_verified"] = False
 
                     # Compute risk score
                     result = risk_scorer.compute_score(
                         deepfake_prob=ml_result["deepfake"]["spoof_probability"],
                         speaker_match=ml_result["speaker"]["similarity"],
                         prosody_anomaly=ml_result["prosody"]["prosody_anomaly_score"],
-                        speaker_drift=ml_result["speaker_drift"],
+                        speaker_drift=session_speaker_drift,
                         deepfake_confidence=ml_result["deepfake"]["confidence"],
-                        has_enrollment=(enrollment_embedding is not None),
+                        has_enrollment=(
+                            enrollment_embedding is not None
+                            and stable_speaker_sim is not None
+                        ),
                     )
 
                     # Track scores for average calculation
@@ -140,7 +224,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "xlsr_score": ml_result["deepfake"].get("xlsr_score"),
                         "prosody": ml_result["prosody"],
                         "speaker_verified": ml_result["speaker"]["is_verified"],
-                        "speaker_similarity": ml_result["speaker"]["similarity"],
+                        "speaker_similarity": max(0.0, float(ml_result["speaker"]["similarity"])),
                     }
 
                     # Continuously persist latest risk score to DetectionSession in DB
@@ -151,14 +235,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             .values(avg_risk_score=round(float(result["score"]), 3))
                         )
                         await db.execute(stmt)
+                        
                         if result["should_alert"] and result["alert_reason"]:
-                            await crud.create_alert(
-                                db,
-                                session_id=session_id,
-                                severity=result["level"].upper(),
-                                trigger_reason=result["alert_reason"],
-                                risk_score=result["score"]
-                            )
+                            session_max_alert_reason = result["alert_reason"]
+                            session_max_level = result["level"].upper()
+                            
                         await db.commit()
 
                     await websocket.send_json(result)
@@ -174,6 +255,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[WS] Session {session_id} — error: {e}")
     finally:
         buffer.clear()
+        speaker_speech.clear()
         risk_scorer.reset()
         pipeline.vad.reset()
         session_embeddings.clear()
@@ -188,5 +270,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 sess.status = "ended"
                 if session_risk_scores:
                     # Save final risk score when user stops recording
-                    sess.avg_risk_score = round(float(session_risk_scores[-1]), 3)
+                    final_score = round(float(session_risk_scores[-1]), 3)
+                    sess.avg_risk_score = final_score
+                    
+                    if session_max_alert_reason:
+                        await crud.create_alert(
+                            db,
+                            session_id=session_id,
+                            severity=session_max_level,
+                            trigger_reason=session_max_alert_reason,
+                            risk_score=final_score,
+                            organization_id=organization_id
+                        )
                 await db.commit()

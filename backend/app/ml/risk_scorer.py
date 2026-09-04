@@ -1,39 +1,21 @@
 """
-Ensemble risk scoring engine with EMA smoothing and alert generation.
+Ensemble risk scoring and threat decision engine with EMA smoothing and debounced alerts.
 
-Fuses signals from the deepfake detector, speaker verifier, prosody
-analyser, and optional context metadata into a single dynamic risk score.
+Decouples deepfake detection from speaker verification into two distinct branches:
+1. Deepfake/Spoof Branch: AASIST + XLS-R + supporting prosody forensics -> calibrated spoof score.
+2. Speaker Verification Branch: ECAPA-TDNN cosine similarity against reference profile.
 
-Features:
-- Configurable ensemble weights via ``ScoringWeights`` dataclass
-- EMA (Exponential Moving Average) temporal smoothing
-- Alert debouncing — only fires after N consecutive high-risk chunks
-- Per-score confidence metric based on model agreement
+Threat Decision Matrix:
+- Q1: GENUINE_ENROLLED_SPEAKER     (High similarity, Low spoof) -> ALLOW / Verified
+- Q2: GENUINE_DIFFERENT_SPEAKER    (Low similarity, Low spoof)  -> IDENTITY_MISMATCH / Deny Biometrics
+- Q3: VOICE_CLONE_IMPERSONATION    (High similarity, High spoof)-> CRITICAL / Terminate Call
+- Q4: SYNTHETIC_UNKNOWN_SPEAKER    (Low similarity, High spoof) -> HIGH_RISK / Challenge Caller
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-
-@dataclass
-class ScoringWeights:
-    """Ensemble fusion weights — must sum to 1.0."""
-    deepfake: float = 0.40
-    speaker: float = 0.25
-    prosody: float = 0.15
-    speaker_drift: float = 0.10
-    context: float = 0.10
-
-    def __post_init__(self):
-        total = (
-            self.deepfake + self.speaker + self.prosody
-            + self.speaker_drift + self.context
-        )
-        if abs(total - 1.0) > 0.01:
-            raise ValueError(
-                f"Scoring weights must sum to 1.0, got {total:.3f}"
-            )
+from dataclasses import dataclass
+from app.config import settings
 
 
 @dataclass
@@ -44,22 +26,27 @@ class _AlertState:
     last_alert_reason: str | None = None
 
 
+class ThreatCategory:
+    GENUINE_ENROLLED = "GENUINE_ENROLLED_SPEAKER"
+    GENUINE_DIFFERENT = "GENUINE_DIFFERENT_SPEAKER"
+    VOICE_CLONE_IMPERSONATION = "VOICE_CLONE_IMPERSONATION"
+    SYNTHETIC_UNKNOWN = "SYNTHETIC_UNKNOWN_SPEAKER"
+    GENUINE_UNENROLLED = "GENUINE_SPEAKER"
+    SYNTHETIC_UNENROLLED = "SYNTHETIC_SPEAKER"
+
+
+class ProtectionAction:
+    ALLOW = "ALLOW"
+    IDENTITY_MISMATCH = "IDENTITY_MISMATCH"
+    CHALLENGE_CALLER = "CHALLENGE_CALLER"
+    TERMINATE_SESSION = "TERMINATE_SESSION"
+    MONITOR = "MONITOR"
+    FLAG_FRAUD = "FLAG_FRAUD"
+
+
 class RiskScorer:
-    """Computes ensemble risk scores with temporal smoothing.
+    """Decoupled Threat Decision and Risk Scoring Engine."""
 
-    Parameters
-    ----------
-    weights : ScoringWeights | None
-        Ensemble fusion weights.  Defaults to the production preset.
-    ema_alpha : float
-        EMA smoothing coefficient.  Higher = more reactive, noisier.
-        Lower = smoother, slower to respond.
-    alert_consecutive_threshold : int
-        Number of consecutive HIGH/CRITICAL chunks before an alert fires.
-        Prevents single-frame false positives.
-    """
-
-    # Risk level boundaries
     LEVEL_LOW = "LOW"
     LEVEL_MEDIUM = "MEDIUM"
     LEVEL_HIGH = "HIGH"
@@ -67,114 +54,197 @@ class RiskScorer:
 
     def __init__(
         self,
-        weights: ScoringWeights | None = None,
-        ema_alpha: float = 0.3,
+        ema_alpha: float = 0.35,
         alert_consecutive_threshold: int = 1,
+        speaker_threshold: float | None = None,
+        deepfake_threshold: float | None = None,
     ):
-        self.weights = weights or ScoringWeights()
         self.ema_alpha = ema_alpha
         self.alert_consecutive_threshold = alert_consecutive_threshold
+        self.speaker_threshold = (
+            speaker_threshold if speaker_threshold is not None
+            else settings.speaker_verification_threshold
+        )
+        self.deepfake_threshold = (
+            deepfake_threshold if deepfake_threshold is not None
+            else settings.deepfake_threshold
+        )
 
         self._current_ema: float = 0.0
         self._chunk_count: int = 0
         self._alert = _AlertState()
 
-    # ------------------------------------------------------------------
-    #  Public API
-    # ------------------------------------------------------------------
-
     def compute_score(
         self,
         deepfake_prob: float,
         speaker_match: float,
-        prosody_anomaly: float,
+        prosody_anomaly: float = 0.0,
         speaker_drift: float = 0.0,
         context_risk: float = 0.0,
         deepfake_confidence: float = 1.0,
         has_enrollment: bool = False,
     ) -> dict:
-        """Compute the ensemble risk score with adaptive weight re-normalization.
-
-        Parameters
-        ----------
-        deepfake_prob : float
-            Probability that the audio is synthetic (0–1).
-        speaker_match : float
-            Cosine similarity to enrolled speaker (0–1).
-        prosody_anomaly : float
-            Prosody anomaly score (0–1).
-        speaker_drift : float
-            Speaker drift score from mid-call change detection (0–1).
-        context_risk : float
-            External context risk signal (0–1).
-        deepfake_confidence : float
-            Detector confidence (0–1).
-        has_enrollment : bool
-            Whether an enrolled speaker profile is linked to this session.
-            If False, speaker mismatch penalty is excluded and remaining
-            weights are re-normalized.
-
-        Returns
-        -------
-        dict
-            Comprehensive scoring result with alert information.
-        """
+        """Evaluate decoupled branches and categorize the threat."""
         self._chunk_count += 1
 
-        if has_enrollment:
-            # Full ensemble when speaker profile is enrolled & linked
-            w_df = 0.40
-            w_spk = 0.35
-            w_pros = 0.15
-            w_drift = 0.10
-            w_ctx = 0.0
-            speaker_risk = max(0.0, 1.0 - speaker_match)
-        else:
-            # Re-normalized weights when no profile is linked (general deepfake monitoring)
-            w_df = 0.60
-            w_spk = 0.00
-            w_pros = 0.30
-            w_drift = 0.10
-            w_ctx = 0.0
-            speaker_risk = 0.0
+        # ── Strict NaN / Inf input sanitation ─────────────────────────
+        import numpy as np
 
-        # ── Weighted ensemble fusion ───────────────────────────────────
-        raw_score = (
-            w_df * (deepfake_prob * deepfake_confidence)
-            + w_spk * speaker_risk
-            + w_pros * prosody_anomaly
-            + w_drift * speaker_drift
-            + w_ctx * context_risk
-        )
+        if speaker_match is None or np.isnan(speaker_match) or np.isinf(speaker_match):
+            speaker_match = 0.0
+        else:
+            speaker_match = float(np.clip(speaker_match, -1.0, 1.0))
+
+        if deepfake_prob is None or np.isnan(deepfake_prob) or np.isinf(deepfake_prob):
+            deepfake_prob = 0.20
+        else:
+            deepfake_prob = float(np.clip(deepfake_prob, 0.0, 1.0))
+
+        if prosody_anomaly is None or np.isnan(prosody_anomaly) or np.isinf(prosody_anomaly):
+            prosody_anomaly = 0.0
+        else:
+            prosody_anomaly = float(np.clip(prosody_anomaly, 0.0, 1.0))
+
+        if speaker_drift is None or np.isnan(speaker_drift) or np.isinf(speaker_drift):
+            speaker_drift = 0.0
+        else:
+            speaker_drift = float(np.clip(speaker_drift, 0.0, 1.0))
+
+        is_synthetic = deepfake_prob >= self.deepfake_threshold
+        is_same_speaker: bool | None = None
+
+        if has_enrollment:
+            is_same_speaker = speaker_match >= self.speaker_threshold
+            # ECAPA-TDNN biological Equal Error Rate (EER) cutoff is ~0.30 - 0.35
+            # We use 0.35 to distinctively separate natural variations of the same 
+            # speaker from a completely different identity.
+            is_biologically_same = speaker_match >= 0.35
+
+            if is_same_speaker and not is_synthetic:
+                # ── Q1: Legitimate Enrolled User (Perfect Match) ──────────────
+                threat_category = ThreatCategory.GENUINE_ENROLLED
+                level = self.LEVEL_LOW
+                raw_score = deepfake_prob * 0.40  # stays safely in [0.0, 0.20]
+                action = ProtectionAction.ALLOW
+                reason = "Legitimate enrolled speaker with natural human voice."
+                should_alert = False
+
+            elif is_biologically_same and not is_synthetic:
+                # ── Borderline Match (Same Speaker, Natural Variation/Noise) ──
+                threat_category = ThreatCategory.GENUINE_ENROLLED
+                level = self.LEVEL_LOW
+                # Scale score gracefully between 0.15 and 0.35
+                margin = self.speaker_threshold - 0.35
+                ratio = (self.speaker_threshold - speaker_match) / margin if margin > 0 else 0
+                raw_score = 0.15 + min(1.0, max(0.0, ratio)) * 0.20
+                action = ProtectionAction.ALLOW
+                reason = f"Verified speaker (similarity: {speaker_match:.2f}). Natural variation likely."
+                should_alert = False
+
+            elif not is_biologically_same and not is_synthetic:
+                # ── Q2: Genuine Human, Different Identity (Imposter) ──────────
+                threat_category = ThreatCategory.GENUINE_DIFFERENT
+                level = self.LEVEL_HIGH
+                # A definite imposter (different human) should be treated as high risk
+                # Scale from 0.65 to 0.75 based on how low the similarity is
+                ratio = (0.35 - max(0.0, speaker_match)) / 0.35
+                raw_score = 0.65 + min(1.0, max(0.0, ratio)) * 0.10
+                action = ProtectionAction.IDENTITY_MISMATCH
+                reason = (
+                    f"Identity mismatch: Human voice detected, but does not match "
+                    f"enrolled profile (similarity: {speaker_match:.2f} < 0.35)."
+                )
+                should_alert = True
+
+            elif is_same_speaker and is_synthetic:
+                # ── Q3: Voice Cloning Impersonation Attack ─────────────
+                threat_category = ThreatCategory.VOICE_CLONE_IMPERSONATION
+                level = self.LEVEL_CRITICAL
+                raw_score = max(0.88, deepfake_prob)
+                action = ProtectionAction.TERMINATE_SESSION
+                reason = (
+                    f"CRITICAL: AI voice clone detected impersonating enrolled user identity "
+                    f"(similarity: {speaker_match:.2f}, spoof: {deepfake_prob:.2f})!"
+                )
+                should_alert = True
+
+            else:
+                # ── Q4: Synthetic / Generic Spoofed Audio ──────────────
+                threat_category = ThreatCategory.SYNTHETIC_UNKNOWN
+                level = self.LEVEL_HIGH
+                raw_score = max(0.70, deepfake_prob)
+                action = ProtectionAction.CHALLENGE_CALLER
+                reason = (
+                    f"Synthetic audio detected from unknown/mismatched voice "
+                    f"(spoof: {deepfake_prob:.2f})."
+                )
+                should_alert = True
+
+        else:
+            # ── Unenrolled General Monitoring ─────────────────────────
+            is_same_speaker = None
+            if not is_synthetic:
+                threat_category = ThreatCategory.GENUINE_UNENROLLED
+                level = self.LEVEL_LOW
+                raw_score = deepfake_prob * 0.50
+                action = ProtectionAction.MONITOR
+                reason = "Natural human voice detected."
+                should_alert = False
+            else:
+                threat_category = ThreatCategory.SYNTHETIC_UNENROLLED
+                level = self.LEVEL_CRITICAL if deepfake_prob >= 0.80 else self.LEVEL_HIGH
+                raw_score = deepfake_prob
+                action = ProtectionAction.FLAG_FRAUD
+                reason = f"AI-generated / synthetic voice detected (spoof: {deepfake_prob:.2f})."
+                should_alert = True
+
+        # Mid-call speaker drift override
+        # A drift of >= 0.70 means similarity to the session centroid dropped below 0.30
+        if speaker_drift >= 0.70:
+            if level in (self.LEVEL_LOW, self.LEVEL_MEDIUM):
+                level = self.LEVEL_HIGH
+                raw_score = max(raw_score, 0.72)
+                reason += f" | Mid-call speaker switch detected (drift: {speaker_drift:.2f})"
+                should_alert = True
+
+        if np.isnan(raw_score) or np.isinf(raw_score):
+            raw_score = 0.0
         raw_score = max(0.0, min(1.0, raw_score))
 
-        # ── EMA smoothing ─────────────────────────────────────────────
-        if self._chunk_count == 1:
+        # ── EMA Smoothing ─────────────────────────────────────────────
+        if self._chunk_count == 1 or np.isnan(self._current_ema):
             self._current_ema = raw_score
         else:
             self._current_ema = (
                 self.ema_alpha * raw_score
                 + (1 - self.ema_alpha) * self._current_ema
             )
+        if np.isnan(self._current_ema) or np.isinf(self._current_ema):
+            self._current_ema = raw_score
 
-        # ── Risk level ─────────────────────────────────────────────────
-        level = self._classify_level(self._current_ema)
+        # Debounce alert for sustained levels if necessary
+        alert_fired, alert_reason = self._update_alert(
+            should_alert=should_alert,
+            level=level,
+            reason=reason,
+        )
 
-        # ── Alert logic (debounced) ────────────────────────────────────
-        should_alert, alert_reason = self._update_alert(level, deepfake_prob, speaker_drift)
-
-        # ── Result ─────────────────────────────────────────────────────
         return {
             "score": round(self._current_ema, 4),
             "raw_score": round(raw_score, 4),
             "level": level,
-            "chunk_index": self._chunk_count,
-            "should_alert": should_alert,
+            "threat_category": threat_category,
+            "action_recommendation": action,
+            "should_alert": alert_fired,
             "alert_reason": alert_reason,
             "has_enrollment": has_enrollment,
+            "is_same_speaker": is_same_speaker,
+            "speaker_similarity": round(speaker_match, 4) if has_enrollment else None,
+            "deepfake_score": round(deepfake_prob, 4),
+            "chunk_index": self._chunk_count,
             "raw_components": {
                 "deepfake": round(deepfake_prob, 4),
-                "speaker_match": round(speaker_match, 4) if has_enrollment else 1.0,
+                "speaker_match": round(max(0.0, speaker_match), 4) if has_enrollment else 1.0,
                 "speaker_drift": round(speaker_drift, 4),
                 "prosody": round(prosody_anomaly, 4),
                 "context": round(context_risk, 4),
@@ -187,33 +257,14 @@ class RiskScorer:
         self._chunk_count = 0
         self._alert = _AlertState()
 
-    # ------------------------------------------------------------------
-    #  Internal helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _classify_level(score: float) -> str:
-        if score >= 0.8:
-            return RiskScorer.LEVEL_CRITICAL
-        if score >= 0.6:
-            return RiskScorer.LEVEL_HIGH
-        if score >= 0.3:
-            return RiskScorer.LEVEL_MEDIUM
-        return RiskScorer.LEVEL_LOW
-
     def _update_alert(
-        self, level: str, deepfake_prob: float, speaker_drift: float
+        self,
+        should_alert: bool,
+        level: str,
+        reason: str,
     ) -> tuple[bool, str | None]:
-        """Debounced alert generation.
-
-        An alert fires when the risk level has been HIGH or CRITICAL
-        for ``alert_consecutive_threshold`` chunks in a row.
-        After firing, the counter resets so alerts can fire again
-        during sustained high-risk periods.
-        """
-        is_high = level in (self.LEVEL_HIGH, self.LEVEL_CRITICAL)
-
-        if is_high:
+        """Debounced alert generation."""
+        if should_alert and level in (self.LEVEL_MEDIUM, self.LEVEL_HIGH, self.LEVEL_CRITICAL):
             self._alert.consecutive_high += 1
         else:
             self._alert.consecutive_high = 0
@@ -222,27 +273,9 @@ class RiskScorer:
             return False, None
 
         if self._alert.consecutive_high >= self.alert_consecutive_threshold:
-            reason = self._determine_reason(deepfake_prob, speaker_drift, level)
             self._alert.alert_fired = True
             self._alert.last_alert_reason = reason
-            # Reset counter so alerts can fire again during sustained high risk
             self._alert.consecutive_high = 0
             return True, reason
 
         return False, None
-
-    @staticmethod
-    def _determine_reason(
-        deepfake_prob: float, speaker_drift: float, level: str
-    ) -> str:
-        """Generate a human-readable alert reason."""
-        reasons: list[str] = []
-
-        if deepfake_prob >= 0.7:
-            reasons.append("High deepfake probability detected")
-        if speaker_drift >= 0.4:
-            reasons.append("Speaker identity change detected mid-call")
-        if not reasons:
-            reasons.append(f"Sustained {level} risk level")
-
-        return "; ".join(reasons)

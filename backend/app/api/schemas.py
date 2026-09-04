@@ -17,7 +17,7 @@ class SpeakerProfileCreate(BaseModel):
 
 class SpeakerProfileResponse(BaseModel):
     id: uuid.UUID
-    user_id: str
+    user_id: str = Field(alias="external_user_id")
     name: str
     language: str
     created_at: datetime
@@ -26,16 +26,24 @@ class SpeakerProfileResponse(BaseModel):
     def serialize_created_at(self, dt: datetime, _info):
         return _ensure_utc(dt)
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 class RiskScoreComponents(BaseModel):
     deepfake: float
     speaker: float
     prosody: float
+    aasist: Optional[float] = None
+    xlsr: Optional[float] = None
+    speaker_drift: Optional[float] = None
 
 class RiskScoreResponse(BaseModel):
     score: float
     level: str
+    threat_category: Optional[str] = None
+    action_recommendation: Optional[str] = None
+    is_same_speaker: Optional[bool] = None
+    speaker_similarity: Optional[float] = None
+    deepfake_score: Optional[float] = None
     raw_components: RiskScoreComponents
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
@@ -46,6 +54,7 @@ class RiskScoreResponse(BaseModel):
 class AlertResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
+    organization_id: Optional[uuid.UUID] = None
     severity: str
     trigger_reason: str
     risk_score: float
@@ -59,6 +68,7 @@ class AlertResponse(BaseModel):
 
 class DetectionSessionResponse(BaseModel):
     id: uuid.UUID = Field(alias="session_id")
+    organization_id: Optional[uuid.UUID] = None
     caller_id: str
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -70,3 +80,4 @@ class DetectionSessionResponse(BaseModel):
         return _ensure_utc(dt)
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+

@@ -35,23 +35,25 @@ class ProsodyAnalyzer:
         Expected audio sample rate (default 16 000).
     """
 
-    # ── Thresholds for "normal" human speech (from phonetics literature)
-    #    Values beyond these are increasingly anomalous.
-    _JITTER_NORMAL = 0.010         # 1 %
-    _JITTER_ANOMALY_RANGE = 0.020  # full anomaly at 3 %
-    _SHIMMER_NORMAL = 0.030        # 3 %
-    _SHIMMER_ANOMALY_RANGE = 0.050 # full anomaly at 8 %
-    _HNR_NORMAL = 20.0             # dB
-    _HNR_ANOMALY_RANGE = 15.0      # full anomaly at 5 dB
-    _SPECTRAL_FLATNESS_HIGH = 0.15 # TTS tends to be < 0.05
-    _F0_STD_NORMAL = 30.0          # Hz — typical intra-utterance variation
+    # ── Calibrated thresholds for conversational microphone speech
+    #    Continuous conversational speech over microphones naturally exhibits
+    #    3-4% jitter, 15-20% shimmer, and lower HNR than sustained vowels.
+    _JITTER_NORMAL = 0.035         # 3.5 % (typical conversational baseline)
+    _JITTER_ANOMALY_RANGE = 0.040  # anomaly ramps from 3.5% to 7.5%
+    _SHIMMER_NORMAL = 0.160        # 16 %
+    _SHIMMER_ANOMALY_RANGE = 0.100 # anomaly ramps from 16% to 26%
+    _HNR_NORMAL = 9.0              # dB
+    _HNR_ANOMALY_RANGE = 7.0       # anomaly ramps down from 9dB to 2dB
+    _SPECTRAL_FLATNESS_HIGH = 0.15 # TTS tends to be < 0.015
+    _F0_STD_NORMAL = 15.0          # Hz — conversational minimum variation
 
     # ── Anomaly score weights (sum = 1.0)
-    _W_JITTER = 0.25
-    _W_SHIMMER = 0.20
-    _W_HNR = 0.20
-    _W_SPECTRAL = 0.20
-    _W_F0_STD = 0.15
+    # Spectral flatness and robotic pitch flatness are stronger TTS indicators
+    _W_JITTER = 0.15
+    _W_SHIMMER = 0.15
+    _W_HNR = 0.15
+    _W_SPECTRAL = 0.30
+    _W_F0_STD = 0.25
 
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate

@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .api import rest, websocket
+from .api import rest, websocket, auth, org, b2b
 from .ml.pipeline import InferencePipeline
 from .db.database import engine, Base, db_dialect
 import app.db.models
@@ -42,12 +42,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/v1/auth")
+app.include_router(org.router, prefix="/api/v1/org")
+app.include_router(b2b.router, prefix="/api/v1/b2b")
 app.include_router(rest.router, prefix="/api/v1")
 app.include_router(websocket.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to VoiceSentinel API", "status": "active"}
+    return {"message": "Welcome to VoiceGuardAI API", "status": "active"}
 
 @app.get("/api/v1/health")
 async def health_check():

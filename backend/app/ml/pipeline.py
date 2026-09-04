@@ -97,6 +97,7 @@ class InferencePipeline:
         audio: np.ndarray,
         enrollment_embedding: np.ndarray | None = None,
         session_embeddings: list[np.ndarray] | None = None,
+        skip_speaker: bool = False,
     ) -> dict:
         """Run the full ML pipeline on one audio window.
 
@@ -125,7 +126,15 @@ class InferencePipeline:
         deepfake_task = asyncio.to_thread(self.detector.predict, audio)
         prosody_task = asyncio.to_thread(self.prosody.analyze, audio)
 
-        if enrollment_embedding is not None:
+        if skip_speaker:
+            async def mock_speaker_task():
+                return {
+                    "similarity": 0.0, "is_verified": False,
+                    "threshold": 0.72, "margin": -0.72,
+                    "embedding": None,
+                }
+            speaker_task = asyncio.create_task(mock_speaker_task())
+        elif enrollment_embedding is not None:
             speaker_task = asyncio.to_thread(
                 self.verifier.verify_against_profile, audio, enrollment_embedding
             )
@@ -144,20 +153,22 @@ class InferencePipeline:
         if isinstance(deepfake_result, Exception):
             print(f"  Deepfake inference error: {deepfake_result}")
             deepfake_result = {
-                "spoof_probability": 0.5, "aasist_score": None,
+                "spoof_probability": 0.2, "aasist_score": None,
                 "xlsr_score": None, "confidence": 0.0,
+                "is_synthetic": False,
             }
         if isinstance(prosody_result, Exception):
             print(f"  Prosody inference error: {prosody_result}")
             prosody_result = {
                 "f0_mean": 0.0, "f0_std": 0.0, "jitter": 0.0,
                 "shimmer": 0.0, "hnr": 0.0, "spectral_flatness": 0.0,
-                "prosody_anomaly_score": 0.5,
+                "prosody_anomaly_score": 0.2,
             }
         if isinstance(speaker_result, Exception):
             print(f"  Speaker inference error: {speaker_result}")
             speaker_result = {
                 "similarity": 0.0, "is_verified": False,
+                "threshold": 0.72, "margin": -0.72,
                 "embedding": np.zeros(192, dtype=np.float32),
             }
 

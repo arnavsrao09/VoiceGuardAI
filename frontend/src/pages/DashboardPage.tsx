@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Upload, Square, X, FileAudio, AlertTriangle, Clock, Zap, Radio, ShieldAlert, ShieldCheck, Info, Activity, Cpu, Wifi, TrendingDown } from 'lucide-react';
 import AudioVisualizer from '../components/dashboard/AudioVisualizer';
 import { useAudioStreamer } from '../hooks/useAudioStreamer';
+import { apiFetch } from '../lib/api';
 
 /* ========================================
    Risk Gauge (inline, larger, animated)
@@ -454,7 +455,10 @@ function AlertsPanel({ alerts }: { alerts: { sev: 'low' | 'medium' | 'high' | 'c
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   const displayAlerts = useMemo(() => {
-    if (alerts.length > 0) return alerts;
+    const valid = (alerts || []).filter(
+      (a): a is NonNullable<typeof a> => Boolean(a && a.sev),
+    );
+    if (valid.length > 0) return valid;
     return [{ sev: 'low' as const, msg: 'System active. Multi-layer ML pipeline ready.', time: 'now', session: '' }];
   }, [alerts]);
 
@@ -469,7 +473,7 @@ function AlertsPanel({ alerts }: { alerts: { sev: 'low' | 'medium' | 'high' | 'c
       <div className="flex flex-col gap-2">
         <AnimatePresence>
           {displayAlerts.map((a, i) => {
-            if (dismissed.has(i)) return null;
+            if (!a || dismissed.has(i)) return null;
             const cfg = sevCfg[a.sev] || sevCfg.low;
             const Icon = cfg.icon;
             return (
@@ -523,6 +527,7 @@ export default function DashboardPage() {
     isConnected,
     riskData,
     alerts,
+    modelLogs,
     recordingTime,
     graceCountdown,
     error,
@@ -549,9 +554,8 @@ export default function DashboardPage() {
   // Fetch sessions from backend
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/sessions');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/org/sessions');
+      if (data) {
         setDbSessions(data.map((s: any) => {
           const fullId = String(s.session_id || s.id);
           const shortId = fullId.slice(0, 5);
@@ -581,9 +585,8 @@ export default function DashboardPage() {
 
   const fetchProfiles = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/speakers');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/org/speakers');
+      if (data) {
         setSpeakerProfiles(data.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -641,7 +644,8 @@ export default function DashboardPage() {
   }, [riskData, recordingTime, stopMonitoring, fetchSessions]);
 
   const handleStartMonitoring = (file?: File | React.MouseEvent) => {
-    const profId = selectedProfileId || undefined;
+    if (!selectedProfileId) return;
+    const profId = selectedProfileId;
     if (file && file instanceof File) {
       startMonitoring(file, profId);
     } else {
@@ -649,14 +653,15 @@ export default function DashboardPage() {
     }
   };
 
-  // Preserve last valid score when stopped
-  const currentScore = riskData ? riskData.score : 0.08;
-  const deepfakeSubScore = riskData ? riskData.raw_components.deepfake : 0.05;
-  const speakerMatchScore = riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
-  const speakerSubScore = riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
-  const prosodySubScore = riskData ? riskData.raw_components.prosody : 0.10;
-  const latencyMs = riskData ? riskData.latency_ms : 0;
-  const isHighRisk = currentScore >= 0.6;
+  // Return to default idle score when monitoring stops
+  const DEFAULT_IDLE_SCORE = 0.00;
+  const currentScore = isMonitoring && riskData ? riskData.score : DEFAULT_IDLE_SCORE;
+  const deepfakeSubScore = isMonitoring && riskData ? riskData.raw_components.deepfake : 0.00;
+  const speakerMatchScore = isMonitoring && riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
+  const speakerSubScore = isMonitoring && riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
+  const prosodySubScore = isMonitoring && riskData ? riskData.raw_components.prosody : 0.00;
+  const latencyMs = isMonitoring && riskData ? riskData.latency_ms : 0;
+  const isHighRisk = isMonitoring && currentScore >= 0.6;
 
   const triggerCountermeasure = (action: string) => {
     setCountermeasureStatus(`Action Initiated: ${action} — Session Terminated`);
@@ -685,7 +690,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
                 Monitoring Dashboard
-                {riskData?.profile_name && (
+                {isMonitoring && riskData?.profile_name && (
                   <span className="text-xs px-2.5 py-1 rounded-lg bg-[rgba(0,229,200,0.12)] text-[var(--color-accent-primary)] font-semibold border border-[rgba(0,229,200,0.2)]">
                     Target Speaker: {riskData.profile_name}
                   </span>
@@ -694,7 +699,9 @@ export default function DashboardPage() {
               <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-0.5">
                 {isMonitoring
                   ? `Live WebSocket stream active (${isConnected ? 'Backend Connected' : 'Connecting...'}) — ${formatTime(recordingTime)}`
-                  : 'Select an enrolled speaker profile (optional) and click Start Monitoring'
+                  : selectedProfileId
+                  ? 'Speaker profile selected. Click Start Monitoring to begin.'
+                  : 'Select an enrolled speaker profile to enable monitoring'
                 }
               </p>
               {error && (
@@ -714,13 +721,15 @@ export default function DashboardPage() {
                   className={`px-3 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none transition-all ${
                     isMonitoring
                       ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-dim)] border-[var(--color-sentinel-border)] cursor-not-allowed'
+                      : !selectedProfileId
+                      ? 'bg-[var(--color-sentinel-surface)] text-[var(--color-sentinel-text)] border-[var(--color-accent-primary)] ring-1 ring-[var(--color-accent-primary-dim)]'
                       : 'bg-[var(--color-sentinel-surface)] text-[var(--color-sentinel-text)] border-[var(--color-sentinel-border)] hover:border-[var(--color-accent-primary)]'
                   }`}
                 >
-                  <option value="">General Detection (No Enrolled Profile)</option>
+                  <option value="">Select a Speaker Profile</option>
                   {speakerProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
-                      Speaker Profile: {p.name} ({p.user_id})
+                      Speaker Profile: {p.name}
                     </option>
                   ))}
                 </select>
@@ -728,7 +737,13 @@ export default function DashboardPage() {
 
               <button
                 onClick={() => setShowUpload(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-sentinel-border)] text-sm font-medium text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
+                disabled={isMonitoring || !selectedProfileId}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-sentinel-border)] text-sm font-medium transition-all ${
+                  isMonitoring || !selectedProfileId
+                    ? 'text-[var(--color-sentinel-text-dim)] bg-[var(--color-sentinel-surface-2)] cursor-not-allowed opacity-50'
+                    : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)]'
+                }`}
+                title={!selectedProfileId ? 'Please select a speaker profile first' : undefined}
               >
                 <Upload className="w-4 h-4" />
                 Upload File
@@ -736,16 +751,20 @@ export default function DashboardPage() {
 
               <button
                 onClick={isMonitoring ? handleStopMonitoring : handleStartMonitoring}
+                disabled={!isMonitoring && !selectedProfileId}
                 className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   isMonitoring
                     ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-risk-critical)] border border-[var(--color-risk-critical)] shadow-lg hover:bg-[rgba(239,68,68,0.1)]'
+                    : !selectedProfileId
+                    ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)] border border-[var(--color-sentinel-border)] cursor-not-allowed opacity-50'
                     : 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] shadow-lg hover:brightness-110'
                 }`}
                 style={{
-                  boxShadow: isMonitoring
+                  boxShadow: isMonitoring || !selectedProfileId
                     ? 'none'
                     : '0 6px 24px rgba(0,229,200,0.2)',
                 }}
+                title={!isMonitoring && !selectedProfileId ? 'Please select a speaker profile to start monitoring' : undefined}
               >
                 {isMonitoring ? (
                   <>
@@ -973,6 +992,30 @@ export default function DashboardPage() {
                     'AASIST (Graph Attention) + XLS-R 300M (Multilingual SSL) + ECAPA-TDNN + Parselmouth Prosody'
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Live Model Inference Logs Terminal */}
+            <div className="mt-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
+              <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3 flex items-center gap-2">
+                Live Pipeline Logs <span className="animate-pulse w-2 h-2 rounded-full bg-[var(--color-risk-low)]"></span>
+              </h3>
+              <div className="bg-[#1e1e2e] rounded-xl p-4 h-64 overflow-y-auto font-mono text-xs text-[#a6accd] flex flex-col gap-2">
+                {modelLogs.length === 0 ? (
+                   <span className="text-gray-500 italic">Waiting for audio stream...</span>
+                ) : (
+                  modelLogs.map((log, idx) => (
+                    <div key={`${log.timestamp}-${log.chunk_index}-${idx}`} className="border-b border-[#313244] pb-2 mb-2 last:border-0 last:mb-0 last:pb-0">
+                      <span className="text-[#89b4fa]">[{log.timestamp}]</span> <span className="text-[#cba6f7]">Chunk #{log.chunk_index}</span>
+                      <br/>
+                      <span className="text-[#f38ba8]">Deepfake (AASIST):</span> {log.details.aasist_score?.toFixed(4) ?? 'N/A'} | <span className="text-[#f38ba8]">XLS-R:</span> {log.details.xlsr_score?.toFixed(4) ?? 'N/A'}
+                      <br/>
+                      <span className="text-[#a6e3a1]">Speaker:</span> Verified: {log.details.speaker_verified ? 'Yes' : 'No'} | Sim: {log.details.speaker_similarity !== undefined ? log.details.speaker_similarity.toFixed(4) : 'N/A'}
+                      <br/>
+                      <span className="text-[#f9e2af]">Prosody:</span> f0_mean: {log.details.prosody.f0_mean.toFixed(2)}, jitter: {log.details.prosody.jitter.toFixed(4)}, hnr: {log.details.prosody.hnr.toFixed(2)}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </motion.div>

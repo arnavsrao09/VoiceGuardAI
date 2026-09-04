@@ -5,6 +5,9 @@ import DashboardPage from './pages/DashboardPage';
 import SpeakerProfilesPage from './pages/SpeakerProfilesPage';
 import AlertsPage from './pages/AlertsPage';
 import SettingsPage from './pages/SettingsPage';
+import AuthPage from './pages/AuthPage';
+import ApiKeysPage from './pages/ApiKeysPage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
   return (
@@ -18,10 +21,47 @@ function App() {
       {/* Routes */}
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/speakers" element={<SpeakerProfilesPage />} />
-        <Route path="/alerts" element={<AlertsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/auth" element={<AuthPage />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/keys"
+          element={
+            <ProtectedRoute>
+              <ApiKeysPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/speakers"
+          element={
+            <ProtectedRoute>
+              <SpeakerProfilesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute>
+              <AlertsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

@@ -1,4 +1,4 @@
-# VoiceSentinel — AI-Powered Real-Time Voice Cloning Detection & Prevention Framework
+# VoiceGuardAI — AI-Powered Real-Time Voice Cloning Detection & Prevention Framework
 
 ## SIH26104 Implementation Plan
 

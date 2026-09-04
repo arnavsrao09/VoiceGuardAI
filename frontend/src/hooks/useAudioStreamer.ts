@@ -1,5 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const TARGET_SAMPLE_RATE = 16000;
+
+function resampleFloatTo16k(input: Float32Array, inputRate: number): Float32Array {
+  if (!inputRate || Math.abs(inputRate - TARGET_SAMPLE_RATE) < 1) {
+    return input;
+  }
+  const ratio = inputRate / TARGET_SAMPLE_RATE;
+  const outLen = Math.max(1, Math.floor(input.length / ratio));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const src = i * ratio;
+    const i0 = Math.min(Math.floor(src), input.length - 1);
+    const i1 = Math.min(i0 + 1, input.length - 1);
+    const frac = src - i0;
+    out[i] = input[i0] * (1 - frac) + input[i1] * frac;
+  }
+  return out;
+}
+
 export interface ModelDetail {
   aasist_score: number | null;
   xlsr_score: number | null;
@@ -40,6 +59,12 @@ export interface LiveRiskData {
   model_detail: ModelDetail;
 }
 
+export interface ModelLog {
+  timestamp: string;
+  chunk_index: number;
+  details: ModelDetail;
+}
+
 export interface LiveAlert {
   id: string;
   sev: 'low' | 'medium' | 'high' | 'critical';
@@ -53,6 +78,7 @@ export function useAudioStreamer() {
   const [isConnected, setIsConnected] = useState(false);
   const [riskData, setRiskData] = useState<LiveRiskData | null>(null);
   const [riskHistory, setRiskHistory] = useState<{ time: string; score: number }[]>([]);
+  const [modelLogs, setModelLogs] = useState<ModelLog[]>([]);
   const [alerts, setAlerts] = useState<LiveAlert[]>([]);
   const [recordingTime, setRecordingTime] = useState(0);
   const [graceCountdown, setGraceCountdown] = useState<number | null>(null);
@@ -64,11 +90,14 @@ export function useAudioStreamer() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const timerRef = useRef<number | null>(null);
   const graceTimerRef = useRef<number | null>(null);
+  const latestAlertRef = useRef<LiveAlert | null>(null);
 
   const stopMonitoring = useCallback(() => {
     setIsMonitoring(false);
     setIsConnected(false);
     setGraceCountdown(null);
+    setRiskData(null);
+    setRiskHistory([]);
 
     if (graceTimerRef.current) {
       clearInterval(graceTimerRef.current);
@@ -99,6 +128,12 @@ export function useAudioStreamer() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    
+    const committedAlert = latestAlertRef.current;
+    latestAlertRef.current = null;
+    if (committedAlert) {
+      setAlerts((prev) => [committedAlert, ...prev.filter(Boolean).slice(0, 19)]);
+    }
   }, []);
 
   const startMonitoring = useCallback(async (file?: File, profileId?: string) => {
@@ -112,8 +147,12 @@ export function useAudioStreamer() {
     }
 
     try {
-      // 1. Establish WebSocket connection to backend (with optional profile_id query param)
-      const wsUrl = `ws://localhost:8000/ws/stream${profileId ? `?profile_id=${profileId}` : ''}`;
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams();
+      if (profileId) params.append('profile_id', profileId);
+      if (token) params.append('token', token);
+      
+      const wsUrl = `ws://localhost:8000/ws/stream?${params.toString()}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -126,7 +165,7 @@ export function useAudioStreamer() {
         try {
           const data: LiveRiskData = JSON.parse(event.data);
           setRiskData(data);
-
+          
           // Append to timeline
           const timeLabel = new Date(data.timestamp).toLocaleTimeString([], {
             hour: '2-digit',
@@ -135,17 +174,28 @@ export function useAudioStreamer() {
           });
           setRiskHistory((prev) => [...prev.slice(-29), { time: timeLabel, score: data.score }]);
 
+          if (data.model_detail) {
+            console.log('[Model Results]', JSON.parse(JSON.stringify(data.model_detail)));
+            setModelLogs((prev) => {
+              const newLog = {
+                timestamp: timeLabel,
+                chunk_index: data.chunk_index,
+                details: data.model_detail
+              };
+              return [newLog, ...prev.slice(0, 49)];
+            });
+          }
+
           // Check for alert
           if (data.should_alert && data.alert_reason) {
             const sev = data.level.toLowerCase() as 'low' | 'medium' | 'high' | 'critical';
-            const newAlert: LiveAlert = {
-              id: `${data.session_id}-${data.chunk_index}`,
+            latestAlertRef.current = {
+              id: `${data.session_id}-final`,
               sev,
               msg: data.alert_reason,
               time: 'Just now',
               session: `#${data.session_id.slice(0, 5)}`,
             };
-            setAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);
           }
         } catch (err) {
           console.error('[AudioStreamer] Failed to parse websocket message:', err);
@@ -224,12 +274,14 @@ export function useAudioStreamer() {
         source = audioCtx.createMediaStreamSource(stream);
       }
 
+      const inputSampleRate = audioCtx.sampleRate;
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
+        const resampled = resampleFloatTo16k(inputData, inputSampleRate);
         // Convert Float32 [-1, 1] -> Int16 PCM [-32768, 32767]
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
+        const pcm16 = new Int16Array(resampled.length);
+        for (let i = 0; i < resampled.length; i++) {
+          const s = Math.max(-1, Math.min(1, resampled[i]));
           pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
 
@@ -268,6 +320,7 @@ export function useAudioStreamer() {
     riskData,
     riskHistory,
     alerts,
+    modelLogs,
     recordingTime,
     graceCountdown,
     error,
