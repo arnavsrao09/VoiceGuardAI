@@ -148,6 +148,139 @@ export default function ApiKeysPage() {
           </tbody>
         </table>
       </div>
+
+      {/* B2B Integration & SDK Code Generator */}
+      <div className="mt-12 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">⚡</span>
+              B2B Developer Integration & Automated Workflows
+            </h2>
+            <p className="text-xs text-gray-400 mt-1">
+              Connect VoiceGuardAI real-time stream analysis into core banking, contact center platforms, and VoIP PBX setups.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const res = await apiFetch('/webhooks/test', { method: 'POST' });
+                  alert(`Webhook Test Dispatched successfully! (Alert ID: ${res.dispatch_result?.payload?.alert_id})`);
+                } catch (e) {
+                  alert(`Webhook Test Failed: ${e}`);
+                }
+              }}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
+            >
+              🚀 Test Webhook Event
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await apiFetch('/alerts/workflows/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'AUTO_HOLD_TRANSACTION',
+                      reason: 'B2B Integration Playground verification trigger',
+                    }),
+                  });
+                  alert(`Automated Workflow Executed!\nAction: ${res.action}\nWorkflow ID: ${res.workflow_id}\nDescription: ${res.description}`);
+                } catch (e) {
+                  alert(`Workflow Test Failed: ${e}`);
+                }
+              }}
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
+            >
+              🔒 Test Hold Workflow
+            </button>
+          </div>
+        </div>
+
+        {/* Code Snippet Tabs */}
+        <div className="space-y-4">
+          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Python SDK (Real-Time Audio Stream)</h3>
+              <span className="text-[10px] text-gray-400 font-mono">16kHz PCM · Biometric Ensemble</span>
+            </div>
+            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-emerald-300 overflow-x-auto">
+{`from voiceguard import VoiceGuardClient
+
+client = VoiceGuardClient(api_key="vg_live_9f8a3b...")
+
+# Connect to real-time telephony stream with contextual transaction metadata
+stream = client.create_stream(
+    caller_phone="+91-9820012345",
+    location="Mumbai, MH (IN)",
+    transaction_amount=50000.0,
+    transfer_type="High-Value Wire Transfer"
+)
+
+# Pipe 16kHz mono audio frames
+stream.send_pcm(audio_chunk_16k)
+
+# Receive continuous ensemble risk scores
+risk = stream.get_latest_risk()
+print(f"Deepfake Risk: {risk.score * 100:.1f}%, Action: {risk.action_recommendation}")`}
+            </pre>
+          </div>
+
+          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">cURL (Automated Workflow Execution API)</h3>
+              <span className="text-[10px] text-gray-400 font-mono">POST /api/v1/alerts/workflows/execute</span>
+            </div>
+            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-cyan-300 overflow-x-auto">
+{`curl -X POST "http://localhost:8000/api/v1/alerts/workflows/execute" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "action": "AUTO_HOLD_TRANSACTION",
+    "session_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "caller_id": "+91 98200 12345",
+    "amount": 50000.0,
+    "reason": "AI voice synthesis artifacts detected on active wire transfer"
+  }'`}
+            </pre>
+          </div>
+
+          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider">WebSocket Streaming Handshake</h3>
+              <span className="text-[10px] text-gray-400 font-mono">ws://localhost:8000/ws/stream</span>
+            </div>
+            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-purple-300 overflow-x-auto">
+{`// Connect with caller context
+const ws = new WebSocket("ws://localhost:8000/ws/stream?location=Mumbai&amount=50000&caller_phone=+919820012345");
+
+// Send dynamic context updates during call
+ws.send(JSON.stringify({
+  type: "update_metadata",
+  amount: 75000,
+  transfer_type: "Crypto Withdrawal"
+}));`}
+            </pre>
+          </div>
+
+          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Asterisk PBX / ARI Stasis Dialplan (`extensions.conf`)</h3>
+              <span className="text-[10px] text-gray-400 font-mono">PJSIP Media Forking · ARI :8088</span>
+            </div>
+            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-amber-300 overflow-x-auto">
+{`[voiceguard-inbound]
+; Route incoming SIP call from customer or bank agent to VoiceGuardAI
+exten => _X.,1,NoOp(==> Inbound Call from: \${CALLERID(num)})
+ same => n,Answer()
+ same => n,Wait(0.2)
+ same => n,Stasis(voiceguard_app,\${CALLERID(num)},\${EXTEN})
+ same => n,Hangup()`}
+            </pre>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

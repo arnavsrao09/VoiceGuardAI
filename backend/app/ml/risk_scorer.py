@@ -207,6 +207,14 @@ class RiskScorer:
                 reason += f" | Mid-call speaker switch detected (drift: {speaker_drift:.2f})"
                 should_alert = True
 
+        # Contextual threat modifier (high-value wire transfers, risky channels, cross-border IP)
+        if context_risk > 0.0:
+            raw_score = min(1.0, raw_score + context_risk * 0.25)
+            if raw_score >= 0.70 and level in (self.LEVEL_LOW, self.LEVEL_MEDIUM):
+                level = self.LEVEL_HIGH
+                reason += f" | High-risk transaction context (+{int(context_risk * 100)}% modifier)"
+                should_alert = True
+
         if np.isnan(raw_score) or np.isinf(raw_score):
             raw_score = 0.0
         raw_score = max(0.0, min(1.0, raw_score))

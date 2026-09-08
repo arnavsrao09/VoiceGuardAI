@@ -250,11 +250,19 @@ class DeepfakeDetector:
         return audio.astype(np.float32)
 
     def _mock_predict(self) -> dict:
-        """Deterministic mock output for development without models."""
-        score = float(self._mock_rng.beta(2, 5))  # skewed toward low risk
+        """Deterministic mock output for development without models.
+
+        Produces stable low-risk scores that simulate a genuine human speaker,
+        preventing false alarms when ONNX models are not loaded.
+        The score hovers in the 0.10–0.25 genuine baseline range with minor
+        natural variation.
+        """
+        # Small jitter around a safe genuine baseline (0.10 - 0.25)
+        score = 0.15 + float(self._mock_rng.uniform(-0.05, 0.10))
         return {
             "spoof_probability": round(score, 4),
             "aasist_score": round(score, 4),
             "xlsr_score": None,
             "confidence": 0.5,
+            "is_synthetic": False,
         }

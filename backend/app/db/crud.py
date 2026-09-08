@@ -71,8 +71,25 @@ async def get_voice_profile_by_external_id(db: AsyncSession, external_user_id: s
     result = await db.execute(select(VoiceProfile).filter(VoiceProfile.external_user_id == external_user_id, VoiceProfile.organization_id == organization_id))
     return result.scalars().first()
 
-async def create_detection_session(db: AsyncSession, caller_id: str, organization_id: uuid.UUID = None, api_key_id: uuid.UUID = None):
-    session = DetectionSession(caller_id=caller_id, organization_id=organization_id, api_key_id=api_key_id)
+async def create_detection_session(
+    db: AsyncSession,
+    caller_id: str,
+    organization_id: uuid.UUID = None,
+    api_key_id: uuid.UUID = None,
+    caller_location: str = None,
+    transaction_amount: float = None,
+    transfer_type: str = None,
+    contextual_notes: str = None,
+):
+    session = DetectionSession(
+        caller_id=caller_id,
+        organization_id=organization_id,
+        api_key_id=api_key_id,
+        caller_location=caller_location,
+        transaction_amount=transaction_amount,
+        transfer_type=transfer_type,
+        contextual_notes=contextual_notes,
+    )
     db.add(session)
     await db.commit()
     await db.refresh(session)

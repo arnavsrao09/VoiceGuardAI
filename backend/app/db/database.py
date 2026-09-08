@@ -8,10 +8,9 @@ _db_url = settings.database_url
 
 def _build_engine():
     """Create async engine, falling back to SQLite if PostgreSQL is unavailable."""
-    global _db_url
     try:
-        # Attempt PostgreSQL connection
-        engine = create_async_engine(_db_url, echo=settings.debug)
+        connect_args = {"statement_cache_size": 0} if "postgresql" in _db_url else {}
+        engine = create_async_engine(_db_url, connect_args=connect_args, echo=settings.debug)
         print(f"[DB] Using PostgreSQL: {_db_url[:50]}…")
         return engine, "postgresql"
     except Exception as e:
@@ -37,7 +36,12 @@ if _is_sqlite:
     print(f"[DB] Using SQLite: {sqlite_path}")
 else:
     try:
-        engine = create_async_engine(_db_url, echo=settings.debug)
+        # Supabase and pgbouncer transaction poolers require statement_cache_size=0 for asyncpg
+        engine = create_async_engine(
+            _db_url,
+            connect_args={"statement_cache_size": 0},
+            echo=settings.debug
+        )
         db_dialect = "postgresql"
         print(f"[DB] Using PostgreSQL: {_db_url[:60]}…")
     except Exception as e:
