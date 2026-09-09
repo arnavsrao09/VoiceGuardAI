@@ -111,6 +111,14 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
   const sttLangRef = useRef<string>(sttLang);
   const isMonitoringRef = useRef<boolean>(isMonitoring);
   const restartTimerRef = useRef<number | null>(null);
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll transcript window on new utterances or interim speech
+  useEffect(() => {
+    if (transcriptScrollRef.current) {
+      transcriptScrollRef.current.scrollTop = transcriptScrollRef.current.scrollHeight;
+    }
+  }, [transcriptHistory, interimText]);
 
   // Sync refs and handle dynamic language switching
   useEffect(() => {
@@ -431,8 +439,8 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
       {/* ── Left (col-span-8): Live Conversation STT & Intent Extraction ── */}
-      <div className="lg:col-span-8 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col justify-between">
-        <div>
+      <div className="lg:col-span-8 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col justify-between min-h-[480px]">
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[var(--color-sentinel-border-subtle)] mb-4">
             <div className="flex items-center gap-2.5">
@@ -497,17 +505,17 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
             ))}
           </div>
 
-          {/* Transcript / Utterances Stream */}
-          <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1 mb-4">
+          {/* Transcript / Utterances Stream (Expanded to full chat container height) */}
+          <div ref={transcriptScrollRef} className="flex-1 min-h-[300px] max-h-[480px] overflow-y-auto pr-1 mb-4 space-y-2.5 scroll-smooth">
             {transcriptHistory.length === 0 && !interimText && (
-              <div className="py-7 text-center rounded-xl border border-dashed border-[var(--color-sentinel-border-subtle)] bg-[var(--color-sentinel-surface-2)]/40">
-                <Mic className={`w-5 h-5 mx-auto mb-1.5 ${isMonitoring ? 'text-[var(--color-accent-primary)] animate-pulse' : 'text-[var(--color-sentinel-text-dim)]'}`} />
-                <p className="text-xs font-semibold text-[var(--color-sentinel-text)]">
+              <div className="h-full flex flex-col items-center justify-center p-8 text-center rounded-xl border border-dashed border-[var(--color-sentinel-border-subtle)] bg-[var(--color-sentinel-surface-2)]/40 min-h-[260px]">
+                <Mic className={`w-6 h-6 mx-auto mb-2 ${isMonitoring ? 'text-[var(--color-accent-primary)] animate-pulse' : 'text-[var(--color-sentinel-text-dim)]'}`} />
+                <p className="text-xs font-semibold text-[var(--color-sentinel-text)] max-w-sm">
                   {isMonitoring
                     ? 'Listening to live voice stream... Speak transaction details naturally'
                     : 'Start monitoring or click any sample prompt above to test automated intent extraction.'}
                 </p>
-                <p className="text-[10px] text-[var(--color-sentinel-text-dim)] mt-0.5">
+                <p className="text-[10px] text-[var(--color-sentinel-text-dim)] mt-1 max-w-xs">
                   Parses dollar amounts, Indian rupees, wire requests, and urgent pressure tactics in real time.
                 </p>
               </div>
