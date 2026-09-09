@@ -200,6 +200,7 @@ class WorkflowExecuteRequest(BaseModel):
     reason: str | None = "Automated high-risk countermeasure triggered"
     caller_id: str | None = None
     amount: float | None = None
+    callback_phone: str | None = None
 
 
 @router.post("/alerts/workflows/execute")
@@ -268,15 +269,17 @@ async def execute_alert_workflow(
             "action": action_type,
             "session_status": session_status,
             "amount": body.amount,
+            "callback_phone": body.callback_phone,
             "initiated_at": datetime.utcnow().isoformat(),
         }
     )
 
+    cb_target = f" ({body.callback_phone})" if body.callback_phone else ""
     action_descriptions = {
         "AUTO_HOLD_TRANSACTION": "Pending high-value financial transaction placed on immediate cryptographic freeze.",
         "REQUIRE_DUAL_SUPERVISOR_APPROVAL": "Transaction escalated for required Dual-Supervisor biometric cryptographic sign-off.",
         "BLOCK_CHANNEL": "Caller ID, IP channel, and session routing blacklisted from initiating further requests.",
-        "INITIATE_CALLBACK": "Out-of-band high-security automated callback triggered to verified telephone number.",
+        "INITIATE_CALLBACK": f"Out-of-band high-security automated voice callback initiated to verified phone{cb_target}.",
     }
 
     return {

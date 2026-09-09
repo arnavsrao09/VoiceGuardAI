@@ -58,7 +58,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>

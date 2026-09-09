@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Lock, Send, UserCheck, X, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Lock, Send, UserCheck, X, CheckCircle2, PhoneCall } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 
 interface TransactionInterceptorProps {
@@ -11,6 +11,7 @@ interface TransactionInterceptorProps {
   reason: string;
   sessionId?: string;
   callerId?: string;
+  callerPhone?: string;
 }
 
 export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
@@ -21,10 +22,18 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
   reason,
   sessionId,
   callerId = 'Live Caller',
+  callerPhone = '',
 }) => {
   const [actionTaken, setActionTaken] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [callbackNumber, setCallbackNumber] = useState<string>(callerPhone || '');
+
+  useEffect(() => {
+    if (callerPhone) {
+      setCallbackNumber(callerPhone);
+    }
+  }, [callerPhone]);
 
   if (!isOpen) return null;
 
@@ -38,6 +47,7 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
           action: actionType,
           session_id: sessionId,
           caller_id: callerId,
+          callback_phone: actionType === 'INITIATE_CALLBACK' ? (callbackNumber.trim() || callerPhone) : undefined,
           reason: reason,
         }),
       });
@@ -187,20 +197,39 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
                   <span className="text-xs font-bold text-rose-400">BLOCK</span>
                 </button>
 
-                <button
-                  onClick={() => handleAction('INITIATE_CALLBACK')}
-                  disabled={isSubmitting}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-left transition group"
-                >
-                  <div className="flex items-center gap-3">
-                    <UserCheck className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition" />
-                    <div>
-                      <span className="text-xs font-bold text-white block">Initiate Out-of-Band Callback</span>
-                      <span className="text-[11px] text-gray-400">Trigger automated voice callback to enrolled phone</span>
+                {/* Out-of-Band Callback with Phone Input */}
+                <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <PhoneCall className="w-4 h-4 text-indigo-400" />
+                      <div>
+                        <span className="text-xs font-bold text-white block">Out-of-Band Phone Callback</span>
+                        <span className="text-[11px] text-gray-400">Trigger direct verification call to employee / user</span>
+                      </div>
                     </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 uppercase tracking-wider">
+                      VOICE 2FA
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-indigo-400">CALLBACK</span>
-                </button>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={callbackNumber}
+                      onChange={(e) => setCallbackNumber(e.target.value)}
+                      placeholder="+1 (555) 019-2834 or +91 98200 12345"
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-black/50 border border-indigo-500/30 text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      onClick={() => handleAction('INITIATE_CALLBACK')}
+                      disabled={isSubmitting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 shadow-sm"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>{isSubmitting ? 'Calling...' : 'Call Back'}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </>
           )}

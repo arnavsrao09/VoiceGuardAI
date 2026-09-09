@@ -209,7 +209,8 @@ class RiskScorer:
 
         # Contextual threat modifier (high-value wire transfers, risky channels, cross-border IP)
         if context_risk > 0.0:
-            raw_score = min(1.0, raw_score + context_risk * 0.25)
+            context_mult = 0.15 if (not has_enrollment and not is_synthetic) else 0.25
+            raw_score = min(1.0, raw_score + context_risk * context_mult)
             if raw_score >= 0.70 and level in (self.LEVEL_LOW, self.LEVEL_MEDIUM):
                 level = self.LEVEL_HIGH
                 reason += f" | High-risk transaction context (+{int(context_risk * 100)}% modifier)"

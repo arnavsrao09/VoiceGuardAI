@@ -55,11 +55,16 @@ export const LiveConversationConsole: React.FC<LiveConversationConsoleProps> = (
   const recognitionRef = useRef<any>(null);
   const sttLangRef = useRef<string>(sttLang);
   const isMonitoringRef = useRef<boolean>(isMonitoring);
+  const restartTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     sttLangRef.current = sttLang;
     if (recognitionRef.current) {
-      recognitionRef.current.lang = sttLang;
+      try {
+        recognitionRef.current.lang = sttLang;
+      } catch {
+        // Ignored
+      }
     }
   }, [sttLang]);
 
@@ -125,21 +130,39 @@ export const LiveConversationConsole: React.FC<LiveConversationConsoleProps> = (
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = sttLangRef.current || 'te-IN';
+    recognition.lang = sttLangRef.current || 'en-US';
 
     recognition.onstart = () => {
       setIsRecognizing(true);
     };
 
+    recognition.onerror = (event: any) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        return;
+      }
+      if (event.error === 'audio-capture' || event.error === 'not-allowed') {
+        console.warn('[LiveSTT] Mic access issue:', event.error);
+        setIsRecognizing(false);
+        return;
+      }
+      console.warn('[LiveSTT] Recognition error:', event.error);
+    };
+
     recognition.onend = () => {
       setIsRecognizing(false);
-      // Auto-restart if still monitoring (use ref to avoid stale closure)
+      // Auto-restart if still monitoring (handle silence timeouts safely)
       if (isMonitoringRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          // Ignored
-        }
+        if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = window.setTimeout(() => {
+          if (isMonitoringRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.lang = sttLangRef.current || 'en-US';
+              recognitionRef.current.start();
+            } catch {
+              // Ignored
+            }
+          }
+        }, 200);
       }
     };
 
@@ -167,6 +190,10 @@ export const LiveConversationConsole: React.FC<LiveConversationConsoleProps> = (
     recognitionRef.current = recognition;
 
     return () => {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
         recognition.stop();
       } catch {
@@ -180,15 +207,25 @@ export const LiveConversationConsole: React.FC<LiveConversationConsoleProps> = (
     if (!recognitionRef.current) return;
 
     if (isMonitoring) {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
+        recognitionRef.current.lang = sttLangRef.current || 'en-US';
         recognitionRef.current.start();
       } catch {
         // Ignored if already started
       }
     } else {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
         recognitionRef.current.stop();
         setInterimText('');
+        setIsRecognizing(false);
       } catch {
         // Ignored
       }

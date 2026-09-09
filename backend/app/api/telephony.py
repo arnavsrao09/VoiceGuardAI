@@ -253,11 +253,25 @@ async def get_asterisk_status():
 
     from app.telephony.sip_server import sip_server_instance, get_local_ip
     registered_clients = list(sip_server_instance.registered_clients.keys()) if sip_server_instance else []
-    sip_active_calls = len(sip_server_instance.active_calls) if sip_server_instance else 0
+    sip_active_call_list = []
+    if sip_server_instance:
+        for cid, cinfo in sip_server_instance.active_calls.items():
+            rcv = cinfo.get("rtp_receiver")
+            sip_active_call_list.append({
+                "call_id": cid,
+                "caller_id": cinfo.get("caller_id"),
+                "start_time": cinfo["start_time"].isoformat() if "start_time" in cinfo else None,
+                "packet_count": rcv.packet_count if rcv else 0,
+                "last_score": rcv.last_score if rcv else 0.0,
+                "speech_prob": rcv.last_speech_prob if rcv else 0.0,
+                "latest_result": rcv.latest_result if rcv else None,
+            })
+    sip_active_calls = len(sip_active_call_list)
 
     return {
         **status,
         "simulated_calls": sim_calls,
+        "sip_calls": sip_active_call_list,
         "total_active_calls": status["active_calls_count"] + len(sim_calls) + sip_active_calls,
         "sip_server": {
             "is_running": sip_server_instance is not None,
@@ -265,6 +279,7 @@ async def get_asterisk_status():
             "port": 5060,
             "registered_clients": registered_clients,
             "active_calls_count": sip_active_calls,
+            "active_calls": sip_active_call_list,
         },
     }
 

@@ -487,7 +487,7 @@ export default function SpeakerProfilesPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>

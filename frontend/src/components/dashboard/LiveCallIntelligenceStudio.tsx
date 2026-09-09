@@ -110,18 +110,26 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
   const recognitionRef = useRef<any>(null);
   const sttLangRef = useRef<string>(sttLang);
   const isMonitoringRef = useRef<boolean>(isMonitoring);
+  const restartTimerRef = useRef<number | null>(null);
 
-  // Sync refs
+  // Sync refs and handle dynamic language switching
   useEffect(() => {
     sttLangRef.current = sttLang;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.lang = sttLang;
+        if (isMonitoringRef.current && isRecognizing) {
+          try {
+            recognitionRef.current.stop();
+          } catch {
+            // Will auto-restart in onend with new language
+          }
+        }
       } catch {
         // Ignored
       }
     }
-  }, [sttLang]);
+  }, [sttLang, isRecognizing]);
 
   useEffect(() => {
     isMonitoringRef.current = isMonitoring;
@@ -294,7 +302,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
     }
   };
 
-  // Setup Web Speech Recognition
+  // Setup Web Speech Recognition with persistent auto-reconnect
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -313,14 +321,34 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
       setIsRecognizing(true);
     };
 
+    recognition.onerror = (event: any) => {
+      // Benign speech recognition events (silence or aborts)
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        return;
+      }
+      if (event.error === 'audio-capture' || event.error === 'not-allowed') {
+        console.warn('[LiveSTT] Microphone access issue:', event.error);
+        setIsRecognizing(false);
+        return;
+      }
+      console.warn('[LiveSTT] SpeechRecognition event:', event.error);
+    };
+
     recognition.onend = () => {
       setIsRecognizing(false);
+      // Auto-restart if monitoring remains active (handle browser silence timeouts safely)
       if (isMonitoringRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          // Ignored
-        }
+        if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = window.setTimeout(() => {
+          if (isMonitoringRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.lang = sttLangRef.current || 'en-US';
+              recognitionRef.current.start();
+            } catch {
+              // Ignore if already active or busy
+            }
+          }
+        }, 200);
       }
     };
 
@@ -348,6 +376,10 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
     recognitionRef.current = recognition;
 
     return () => {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
         recognition.stop();
       } catch {
@@ -356,21 +388,30 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
     };
   }, []);
 
-  // Trigger speech recognition on monitoring toggle
+  // Trigger speech recognition on monitoring toggle (SIP call or mic stream)
   useEffect(() => {
     if (!recognitionRef.current) return;
 
     if (isMonitoring) {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
-        recognitionRef.current.lang = sttLangRef.current;
+        recognitionRef.current.lang = sttLangRef.current || 'en-US';
         recognitionRef.current.start();
       } catch {
-        // Ignored if already started
+        // Already active or queued
       }
     } else {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       try {
         recognitionRef.current.stop();
         setInterimText('');
+        setIsRecognizing(false);
       } catch {
         // Ignored
       }
@@ -680,59 +721,95 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
                   </span>
                 </div>
 
-                {/* Mobile Client Connected Banner */}
+                {/* Mobile / Desktop Softphone Connected Banner */}
                 {asteriskStatus?.sip_server?.registered_clients?.length > 0 && (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
-                    <span className="flex items-center gap-1.5 font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Mobile Phone Connected (Account: {asteriskStatus.sip_server.registered_clients[0]})
-                    </span>
-                    <span className="text-[10px] font-mono text-emerald-400/80">Ext: 5000</span>
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-emerald-300">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Softphone Registered ({asteriskStatus.sip_server.registered_clients[0]})
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                        DIAL: 5000
+                      </span>
+                    </div>
+
+                    {asteriskStatus?.sip_server?.active_calls_count > 0 ? (
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-[11px]">
+                        <span className="text-white font-semibold flex items-center gap-2">
+                          <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                          Live Audio Stream Active
+                        </span>
+                        <span className="font-mono text-emerald-400 font-bold text-xs">
+                          {asteriskStatus?.sip_server?.active_calls?.[0]?.packet_count || 0} pkts
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-emerald-300/80 leading-relaxed">
+                        To test your voice: Dial <strong className="text-white">5000</strong> in Zoiper and start speaking. VoiceGuard will decode and analyze your microphone in real-time.
+                      </p>
+                    )}
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={simPhoneInput}
-                      onChange={(e) => setSimPhoneInput(e.target.value)}
-                      placeholder="+91 98200 12345"
-                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] text-xs font-mono text-[var(--color-sentinel-text)] focus:outline-none focus:border-cyan-400"
-                    />
-                    <select
-                      value={simScenario}
-                      onChange={(e) => setSimScenario(e.target.value)}
-                      className="px-2 py-1.5 rounded-lg bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] text-[11px] text-[var(--color-sentinel-text-muted)] focus:outline-none"
-                    >
-                      <option value="deepfake_pressure">Deepfake Pressure</option>
-                      <option value="genuine_user">Genuine Caller</option>
-                    </select>
+                {/* Simulated SIP Call Controls */}
+                <div className="space-y-2.5 pt-1">
+                  <span className="text-[10px] font-bold text-[var(--color-sentinel-text-dim)] uppercase tracking-wider block">
+                    Or Test With Simulated Inbound Call
+                  </span>
+
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-[var(--color-sentinel-text-dim)]">
+                        Caller Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        value={simPhoneInput}
+                        onChange={(e) => setSimPhoneInput(e.target.value)}
+                        placeholder="+91 98200 12345"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] text-xs font-mono text-[var(--color-sentinel-text)] focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-[var(--color-sentinel-text-dim)]">
+                        Scenario Benchmark
+                      </label>
+                      <select
+                        value={simScenario}
+                        onChange={(e) => setSimScenario(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] text-xs text-[var(--color-sentinel-text)] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value="deepfake_pressure">Deepfake Pressure (High Threat Simulation)</option>
+                        <option value="genuine_user">Genuine Human Caller (Safe Baseline)</option>
+                      </select>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pt-1">
                     {!simulatedCallId ? (
                       <button
                         onClick={handleStartSimulatedCall}
                         disabled={isSimulatingCall}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
                       >
                         <PhoneCall className="w-3.5 h-3.5" />
-                        {isSimulatingCall ? 'Connecting SIP...' : 'Test Inbound SIP Call'}
+                        {isSimulatingCall ? 'Connecting SIP...' : 'Trigger Simulated SIP Call'}
                       </button>
                     ) : (
                       <button
                         onClick={handleHangupSimulatedCall}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
                       >
                         <Square className="w-3.5 h-3.5" />
-                        Hang Up SIP Call
+                        Hang Up Simulated Call
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="text-[10px] text-[var(--color-sentinel-text-dim)] flex items-center justify-between pt-1 border-t border-[var(--color-sentinel-border-subtle)]">
+                <div className="text-[10px] text-[var(--color-sentinel-text-dim)] flex items-center justify-between pt-1.5 border-t border-[var(--color-sentinel-border-subtle)]">
                   <span>Channel: PJSIP / Stasis(voiceguard_app)</span>
                   <span className="font-mono text-cyan-400">RTP Forking</span>
                 </div>

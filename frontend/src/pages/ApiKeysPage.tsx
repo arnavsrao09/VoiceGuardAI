@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { apiFetch } from '../lib/api';
-import { Key, Plus, Trash2, Copy, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch, getAuthToken } from '../lib/api';
+import {
+  Key, Plus, Trash2, Copy, Check, Shield, Zap, Radio, Webhook,
+  Code2, Server, Phone, ChevronRight, ExternalLink, Eye, EyeOff,
+  Clock, CheckCircle2, XCircle, AlertTriangle, BookOpen
+} from 'lucide-react';
 
 interface ApiKey {
   id: string;
@@ -9,11 +14,128 @@ interface ApiKey {
   created_at: string;
 }
 
+/* ─── Feature card definitions ─── */
+const API_CAPABILITIES = [
+  {
+    icon: Radio,
+    title: 'Real-Time Audio Streaming',
+    description: 'Pipe 16kHz PCM audio from your telephony infrastructure via WebSocket. Get continuous ensemble risk scoring with sub-200ms latency.',
+    endpoint: 'ws://host/ws/stream',
+    color: 'var(--color-accent-primary)',
+    bgColor: 'rgba(0,229,200,0.08)',
+    borderColor: 'rgba(0,229,200,0.2)',
+  },
+  {
+    icon: Shield,
+    title: 'Deepfake Detection API',
+    description: 'Upload audio files for offline forensic analysis using AASIST + XLS-R ensemble. Returns deepfake probability, spectral anomalies, and confidence intervals.',
+    endpoint: 'POST /api/v1/analyze',
+    color: '#a78bfa',
+    bgColor: 'rgba(167,139,250,0.08)',
+    borderColor: 'rgba(167,139,250,0.2)',
+  },
+  {
+    icon: Zap,
+    title: 'Automated Workflows',
+    description: 'Trigger transaction holds, escalation flows, and compliance actions programmatically when risk thresholds are breached during live calls.',
+    endpoint: 'POST /api/v1/alerts/workflows/execute',
+    color: '#f97316',
+    bgColor: 'rgba(249,115,22,0.08)',
+    borderColor: 'rgba(249,115,22,0.2)',
+  },
+  {
+    icon: Webhook,
+    title: 'Webhook Events',
+    description: 'Receive real-time HTTP POST notifications to your endpoint whenever a deepfake alert, identity drift, or high-risk transaction is detected.',
+    endpoint: 'POST /api/v1/webhooks/configure',
+    color: '#ec4899',
+    bgColor: 'rgba(236,72,153,0.08)',
+    borderColor: 'rgba(236,72,153,0.2)',
+  },
+];
+
+const CODE_TABS = [
+  {
+    id: 'python',
+    label: 'Python SDK',
+    icon: Code2,
+    color: '#10b981',
+    badge: '16kHz PCM · Biometric Ensemble',
+    code: `from voiceguard import VoiceGuardClient
+
+client = VoiceGuardClient(api_key="vg_live_9f8a3b...")
+
+# Connect to real-time telephony stream with contextual transaction metadata
+stream = client.create_stream(
+    caller_phone="+91-9820012345",
+    location="Mumbai, MH (IN)",
+    transaction_amount=50000.0,
+    transfer_type="High-Value Wire Transfer"
+)
+
+# Pipe 16kHz mono audio frames
+stream.send_pcm(audio_chunk_16k)
+
+# Receive continuous ensemble risk scores
+risk = stream.get_latest_risk()
+print(f"Deepfake Risk: {risk.score * 100:.1f}%, Action: {risk.action_recommendation}")`,
+  },
+  {
+    id: 'curl',
+    label: 'cURL',
+    icon: Server,
+    color: '#06b6d4',
+    badge: 'POST /api/v1/alerts/workflows/execute',
+    code: `curl -X POST "http://localhost:8000/api/v1/alerts/workflows/execute" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "action": "AUTO_HOLD_TRANSACTION",
+    "session_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "caller_id": "+91 98200 12345",
+    "amount": 50000.0,
+    "reason": "AI voice synthesis artifacts detected on active wire transfer"
+  }'`,
+  },
+  {
+    id: 'websocket',
+    label: 'WebSocket',
+    icon: Radio,
+    color: '#a78bfa',
+    badge: 'ws://localhost:8000/ws/stream',
+    code: `// Connect with caller context
+const ws = new WebSocket("ws://localhost:8000/ws/stream?location=Mumbai&amount=50000&caller_phone=+919820012345");
+
+// Send dynamic context updates during call
+ws.send(JSON.stringify({
+  type: "update_metadata",
+  amount: 75000,
+  transfer_type: "Crypto Withdrawal"
+}));`,
+  },
+  {
+    id: 'asterisk',
+    label: 'Asterisk PBX',
+    icon: Phone,
+    color: '#f59e0b',
+    badge: 'PJSIP Media Forking · ARI :8088',
+    code: `[voiceguard-inbound]
+; Route incoming SIP call from customer or bank agent to VoiceGuardAI
+exten => _X.,1,NoOp(==> Inbound Call from: \${CALLERID(num)})
+ same => n,Answer()
+ same => n,Wait(0.2)
+ same => n,Stasis(voiceguard_app,\${CALLERID(num)},\${EXTEN})
+ same => n,Hangup()`,
+  },
+];
+
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [activeCodeTab, setActiveCodeTab] = useState('python');
+  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchKeys();
@@ -41,7 +163,7 @@ export default function ApiKeysPage() {
   };
 
   const handleRevokeKey = async (id: string) => {
-    if (!confirm('Are you sure you want to revoke this key?')) return;
+    if (!confirm('Are you sure you want to revoke this key? This action cannot be undone.')) return;
     try {
       await apiFetch(`/org/keys/${id}`, { method: 'DELETE' });
       setKeys(keys.map(k => k.id === id ? { ...k, is_active: false } : k));
@@ -50,233 +172,302 @@ export default function ApiKeysPage() {
     }
   };
 
-  const copyToClipboard = () => {
-    if (newKey) {
-      navigator.clipboard.writeText(newKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
+  const toggleKeyVisibility = (id: string) => {
+    setVisibleKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const activeTab = CODE_TABS.find(t => t.id === activeCodeTab) || CODE_TABS[0];
+
   return (
-    <div className="pt-24 pb-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Key className="h-8 w-8 text-red-500" />
-            API Keys
-          </h1>
-          <p className="mt-2 text-gray-400">Manage your organization's API keys for B2B integration.</p>
-        </div>
-        <button
-          onClick={handleCreateKey}
-          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Generate New Key
-        </button>
-      </div>
+    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
+      <div className="max-w-[1440px] mx-auto">
 
-      {newKey && (
-        <div className="mb-8 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-          <h3 className="text-lg font-medium text-green-400 mb-2">New API Key Generated</h3>
-          <p className="text-sm text-gray-300 mb-4">
-            Please copy this key and store it safely. You will not be able to see it again.
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 bg-black/50 p-3 rounded font-mono text-sm text-white break-all">
-              {newKey}
-            </code>
-            <button
-              onClick={copyToClipboard}
-              className="p-3 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white"
-            >
-              {copied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5" />}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="glass-panel overflow-hidden">
-        <table className="min-w-full divide-y divide-white/10">
-          <thead className="bg-white/5">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Prefix</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Created</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {loading ? (
-              <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-gray-400">Loading...</td>
-              </tr>
-            ) : keys.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-gray-400">No API keys found.</td>
-              </tr>
-            ) : (
-              keys.map((key) => (
-                <tr key={key.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-white">
-                    {key.prefix}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      key.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {key.is_active ? 'Active' : 'Revoked'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                    {new Date(key.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {key.is_active && (
-                      <button
-                        onClick={() => handleRevokeKey(key.id)}
-                        className="text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 ml-auto"
-                      >
-                        <Trash2 className="h-4 w-4" /> Revoke
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* B2B Integration & SDK Code Generator */}
-      <div className="mt-12 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        {/* ────── Page Header ────── */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">⚡</span>
-              B2B Developer Integration & Automated Workflows
-            </h2>
-            <p className="text-xs text-gray-400 mt-1">
-              Connect VoiceGuardAI real-time stream analysis into core banking, contact center platforms, and VoIP PBX setups.
+            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] flex items-center justify-center shadow-lg" style={{ boxShadow: '0 4px 20px rgba(0,229,200,0.15)' }}>
+                <Key className="w-5 h-5 text-white" />
+              </div>
+              API Keys & Integration
+            </h1>
+            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1.5 max-w-xl">
+              Manage authentication keys for your organisation's B2B integrations. Each key grants access to real-time audio analysis, automated workflows, and webhook event subscriptions.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={async () => {
-                try {
-                  const res = await apiFetch('/webhooks/test', { method: 'POST' });
-                  alert(`Webhook Test Dispatched successfully! (Alert ID: ${res.dispatch_result?.payload?.alert_id})`);
-                } catch (e) {
-                  alert(`Webhook Test Failed: ${e}`);
-                }
-              }}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
+          <button
+            onClick={handleCreateKey}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold hover:brightness-110 active:scale-95 transition-all shadow-lg"
+            style={{ boxShadow: '0 6px 24px rgba(0,229,200,0.2)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Generate New Key
+          </button>
+        </div>
+
+        {/* ────── New Key Alert ────── */}
+        <AnimatePresence>
+          {newKey && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              className="mb-8 p-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm"
             >
-              🚀 Test Webhook Event
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  const res = await apiFetch('/alerts/workflows/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      action: 'AUTO_HOLD_TRANSACTION',
-                      reason: 'B2B Integration Playground verification trigger',
-                    }),
-                  });
-                  alert(`Automated Workflow Executed!\nAction: ${res.action}\nWorkflow ID: ${res.workflow_id}\nDescription: ${res.description}`);
-                } catch (e) {
-                  alert(`Workflow Test Failed: ${e}`);
-                }
-              }}
-              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
-            >
-              🔒 Test Hold Workflow
-            </button>
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-emerald-400">API Key Generated Successfully</h3>
+              </div>
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] mb-3">
+                Copy this key now — it will <strong className="text-[var(--color-sentinel-text)]">never be shown again</strong>. Store it securely in your environment variables or secrets manager.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-[#0f111a] px-4 py-3 rounded-xl font-mono text-sm text-emerald-300 border border-emerald-500/10 break-all">
+                  {newKey}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(newKey)}
+                  className="shrink-0 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ────── Two-Column Layout ────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-10">
+
+          {/* Left: Key Management (3 cols) */}
+          <div className="lg:col-span-3 space-y-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
+                <Key className="w-4 h-4 text-[var(--color-accent-primary)]" />
+                Active Keys
+              </h2>
+              <span className="text-xs text-[var(--color-sentinel-text-dim)] font-mono">
+                {keys.filter(k => k.is_active).length} active · {keys.filter(k => !k.is_active).length} revoked
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-16 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
+                <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : keys.length === 0 ? (
+              <div className="text-center py-16 rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
+                <Key className="w-10 h-10 text-[var(--color-sentinel-text-dim)] mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-[var(--color-sentinel-text)] mb-1">No API Keys Yet</h3>
+                <p className="text-xs text-[var(--color-sentinel-text-muted)]">Generate your first key to get started with the API.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {keys.map((key, idx) => (
+                  <motion.div
+                    key={key.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className={`rounded-2xl border p-4 transition-all ${
+                      key.is_active
+                        ? 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] hover:border-[var(--color-sentinel-text-dim)]'
+                        : 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                          key.is_active ? 'bg-[rgba(0,229,200,0.1)]' : 'bg-[rgba(239,68,68,0.1)]'
+                        }`}>
+                          <Key className={`w-4 h-4 ${key.is_active ? 'text-[var(--color-accent-primary)]' : 'text-red-400'}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <code className="text-sm font-mono text-[var(--color-sentinel-text)] font-semibold truncate">
+                              {visibleKeys.has(key.id) ? key.prefix + '••••••••••••' : key.prefix + '••••'}
+                            </code>
+                            <button
+                              onClick={() => toggleKeyVisibility(key.id)}
+                              className="p-1 rounded-md text-[var(--color-sentinel-text-dim)] hover:text-[var(--color-sentinel-text)] transition-colors"
+                            >
+                              {visibleKeys.has(key.id) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              key.is_active
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}>
+                              {key.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                              {key.is_active ? 'ACTIVE' : 'REVOKED'}
+                            </span>
+                            <span className="text-[11px] text-[var(--color-sentinel-text-dim)] flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {new Date(key.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {key.is_active && (
+                        <button
+                          onClick={() => handleRevokeKey(key.id)}
+                          className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/10 hover:border-red-500/40 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right: What Your Key Unlocks (2 cols) */}
+          <div className="lg:col-span-2">
+            <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-[var(--color-accent-purple)]" />
+              What Your API Key Unlocks
+            </h2>
+            <div className="flex flex-col gap-3">
+              {API_CAPABILITIES.map((cap, idx) => {
+                const Icon = cap.icon;
+                return (
+                  <motion.div
+                    key={cap.title}
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 + idx * 0.07 }}
+                    className="rounded-2xl border p-4 transition-all hover:border-opacity-60 group"
+                    style={{ borderColor: cap.borderColor, background: cap.bgColor }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cap.color}15` }}>
+                        <Icon className="w-[18px] h-[18px]" style={{ color: cap.color }} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-[0.8125rem] font-bold text-[var(--color-sentinel-text)] mb-1">{cap.title}</h4>
+                        <p className="text-[11px] text-[var(--color-sentinel-text-muted)] leading-relaxed mb-2">{cap.description}</p>
+                        <code className="text-[10px] font-mono px-2 py-1 rounded-md bg-[#0f111a] border border-[var(--color-sentinel-border)]" style={{ color: cap.color }}>
+                          {cap.endpoint}
+                        </code>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Code Snippet Tabs */}
-        <div className="space-y-4">
-          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Python SDK (Real-Time Audio Stream)</h3>
-              <span className="text-[10px] text-gray-400 font-mono">16kHz PCM · Biometric Ensemble</span>
+        {/* ────── Developer Integration Section ────── */}
+        <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-5 border-b border-[var(--color-sentinel-border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400"><Code2 className="w-4 h-4" /></span>
+                Developer Integration Guide
+              </h2>
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-1">
+                Connect VoiceGuardAI into core banking, contact centre platforms, and VoIP PBX setups using these code examples.
+              </p>
             </div>
-            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-emerald-300 overflow-x-auto">
-{`from voiceguard import VoiceGuardClient
-
-client = VoiceGuardClient(api_key="vg_live_9f8a3b...")
-
-# Connect to real-time telephony stream with contextual transaction metadata
-stream = client.create_stream(
-    caller_phone="+91-9820012345",
-    location="Mumbai, MH (IN)",
-    transaction_amount=50000.0,
-    transfer_type="High-Value Wire Transfer"
-)
-
-# Pipe 16kHz mono audio frames
-stream.send_pcm(audio_chunk_16k)
-
-# Receive continuous ensemble risk scores
-risk = stream.get_latest_risk()
-print(f"Deepfake Risk: {risk.score * 100:.1f}%, Action: {risk.action_recommendation}")`}
-            </pre>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await apiFetch('/webhooks/test', { method: 'POST' });
+                    alert(`Webhook Test Dispatched! (Alert ID: ${res.dispatch_result?.payload?.alert_id})`);
+                  } catch (e) {
+                    alert(`Webhook Test Failed: ${e}`);
+                  }
+                }}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
+              >
+                🚀 Test Webhook
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await apiFetch('/alerts/workflows/execute', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'AUTO_HOLD_TRANSACTION',
+                        reason: 'B2B Integration Playground verification trigger',
+                      }),
+                    });
+                    alert(`Workflow Executed!\nAction: ${res.action}\nWorkflow ID: ${res.workflow_id}\nDescription: ${res.description}`);
+                  } catch (e) {
+                    alert(`Workflow Test Failed: ${e}`);
+                  }
+                }}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5"
+              >
+                🔒 Test Hold Workflow
+              </button>
+            </div>
           </div>
 
-          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">cURL (Automated Workflow Execution API)</h3>
-              <span className="text-[10px] text-gray-400 font-mono">POST /api/v1/alerts/workflows/execute</span>
-            </div>
-            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-cyan-300 overflow-x-auto">
-{`curl -X POST "http://localhost:8000/api/v1/alerts/workflows/execute" \\
-  -H "Authorization: Bearer YOUR_API_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "action": "AUTO_HOLD_TRANSACTION",
-    "session_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
-    "caller_id": "+91 98200 12345",
-    "amount": 50000.0,
-    "reason": "AI voice synthesis artifacts detected on active wire transfer"
-  }'`}
-            </pre>
+          {/* Tab Bar */}
+          <div className="px-6 pt-4 flex items-center gap-1 overflow-x-auto border-b border-[var(--color-sentinel-border)]">
+            {CODE_TABS.map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activeCodeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveCodeTab(tab.id)}
+                  className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all ${
+                    isActive
+                      ? 'text-[var(--color-sentinel-text)] bg-[#0f111a]'
+                      : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
+                  }`}
+                >
+                  <TabIcon className="w-3.5 h-3.5" style={{ color: isActive ? tab.color : undefined }} />
+                  {tab.label}
+                  {isActive && (
+                    <motion.div
+                      layoutId="code-tab-indicator"
+                      className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                      style={{ background: tab.color }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider">WebSocket Streaming Handshake</h3>
-              <span className="text-[10px] text-gray-400 font-mono">ws://localhost:8000/ws/stream</span>
+          {/* Code Block */}
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-mono text-[var(--color-sentinel-text-dim)]">{activeTab.badge}</span>
+              <button
+                onClick={() => copyToClipboard(activeTab.code)}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] transition-colors"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
             </div>
-            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-purple-300 overflow-x-auto">
-{`// Connect with caller context
-const ws = new WebSocket("ws://localhost:8000/ws/stream?location=Mumbai&amount=50000&caller_phone=+919820012345");
-
-// Send dynamic context updates during call
-ws.send(JSON.stringify({
-  type: "update_metadata",
-  amount: 75000,
-  transfer_type: "Crypto Withdrawal"
-}));`}
-            </pre>
-          </div>
-
-          <div className="bg-[#1a1c2a] border border-[#2a2d3d] rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Asterisk PBX / ARI Stasis Dialplan (`extensions.conf`)</h3>
-              <span className="text-[10px] text-gray-400 font-mono">PJSIP Media Forking · ARI :8088</span>
-            </div>
-            <pre className="bg-[#0f111a] p-3.5 rounded-lg text-xs font-mono text-amber-300 overflow-x-auto">
-{`[voiceguard-inbound]
-; Route incoming SIP call from customer or bank agent to VoiceGuardAI
-exten => _X.,1,NoOp(==> Inbound Call from: \${CALLERID(num)})
- same => n,Answer()
- same => n,Wait(0.2)
- same => n,Stasis(voiceguard_app,\${CALLERID(num)},\${EXTEN})
- same => n,Hangup()`}
+            <pre className="bg-[#0f111a] p-5 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-[#1e2030]" style={{ color: activeTab.color }}>
+              {activeTab.code}
             </pre>
           </div>
         </div>

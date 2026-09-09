@@ -107,15 +107,13 @@ export const TelemetrySidebar: React.FC<TelemetrySidebarProps> = ({
             className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none transition-all ${
               isMonitoring
                 ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-dim)] border-[var(--color-sentinel-border)] cursor-not-allowed'
-                : !selectedProfileId
-                ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text)] border-[var(--color-accent-primary)] ring-1 ring-[var(--color-accent-primary-dim)]'
                 : 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text)] border-[var(--color-sentinel-border)] hover:border-[var(--color-accent-primary)]'
             }`}
           >
-            <option value="">Select a Speaker Profile</option>
+            <option value="">General Monitoring (Unenrolled Caller)</option>
             {speakerProfiles.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.name} (Enrolled)
               </option>
             ))}
           </select>
@@ -125,12 +123,9 @@ export const TelemetrySidebar: React.FC<TelemetrySidebarProps> = ({
         <div className="flex flex-col gap-2">
           <button
             onClick={isMonitoring ? onStopMonitoring : onStartMonitoring}
-            disabled={!isMonitoring && !selectedProfileId}
             className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 shadow-md ${
               isMonitoring
                 ? 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-risk-critical)] border border-[var(--color-risk-critical)] hover:bg-[rgba(239,68,68,0.1)]'
-                : !selectedProfileId
-                ? 'bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-dim)] border border-[var(--color-sentinel-border)] cursor-not-allowed opacity-50'
                 : 'bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] hover:brightness-110'
             }`}
           >
@@ -149,9 +144,9 @@ export const TelemetrySidebar: React.FC<TelemetrySidebarProps> = ({
 
           <button
             onClick={onOpenUpload}
-            disabled={isMonitoring || !selectedProfileId}
+            disabled={isMonitoring}
             className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[var(--color-sentinel-border)] text-xs font-medium transition-all ${
-              isMonitoring || !selectedProfileId
+              isMonitoring
                 ? 'text-[var(--color-sentinel-text-dim)] bg-[var(--color-sentinel-surface-2)] cursor-not-allowed opacity-50'
                 : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)] hover:border-[var(--color-sentinel-text-dim)]'
             }`}

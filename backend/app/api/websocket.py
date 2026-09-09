@@ -35,6 +35,45 @@ from app.alerts.notifier import AlertNotifier
 router = APIRouter()
 
 
+class TelemetryHub:
+    """Central broadcast hub: fans out live analysis from SIP softphone & mic to dashboard UI."""
+
+    def __init__(self):
+        self._listeners: set[WebSocket] = set()
+
+    def register(self, ws: WebSocket):
+        self._listeners.add(ws)
+
+    def unregister(self, ws: WebSocket):
+        self._listeners.discard(ws)
+
+    async def broadcast(self, data: dict):
+        dead = []
+        for ws in self._listeners:
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self._listeners.discard(ws)
+
+telemetry_hub = TelemetryHub()
+
+
+@router.websocket("/ws/telemetry")
+async def telemetry_endpoint(websocket: WebSocket):
+    """Broadcast hub for dashboard: receives all live risk events from SIP, softphone, and mic."""
+    await websocket.accept()
+    telemetry_hub.register(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        telemetry_hub.unregister(websocket)
+
+
 def calculate_context_risk(amount: float, transfer_type: str, location: str) -> float:
     """Calculate contextual transaction threat modifier."""
     risk = 0.0
@@ -311,6 +350,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         await db.commit()
 
                     await websocket.send_json(result)
+                    asyncio.create_task(telemetry_hub.broadcast(result))
 
             # ── Handle JSON text messages (dynamic metadata updates, commands) ──
             elif "text" in data and data["text"]:
@@ -391,4 +431,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             risk_score=final_score,
                             organization_id=organization_id
                         )
-                await db.commit()
+                    await db.commit()
+
+        asyncio.create_task(
+            telemetry_hub.broadcast({
+                "type": "session_ended",
+                "session_id": str(session_id),
+            })
+        )

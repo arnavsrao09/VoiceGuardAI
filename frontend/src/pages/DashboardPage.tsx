@@ -1,12 +1,30 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Square, X, FileAudio, AlertTriangle, Clock, Zap, Radio, ShieldAlert, ShieldCheck, Info } from 'lucide-react';
+import {
+  Upload,
+  Square,
+  X,
+  FileAudio,
+  AlertTriangle,
+  Clock,
+  Zap,
+  Radio,
+  ShieldAlert,
+  ShieldCheck,
+  Info,
+  Mic,
+  Activity,
+  Cpu,
+  Terminal,
+  FileSpreadsheet,
+  Fingerprint,
+  MessageSquare
+} from 'lucide-react';
 import AudioVisualizer from '../components/dashboard/AudioVisualizer';
-import TelemetrySidebar from '../components/dashboard/TelemetrySidebar';
 import LiveCallIntelligenceStudio from '../components/dashboard/LiveCallIntelligenceStudio';
 import TransactionInterceptor from '../components/dashboard/TransactionInterceptor';
 import ForensicAcousticRadar from '../components/dashboard/ForensicAcousticRadar';
-import { useAudioStreamer } from '../hooks/useAudioStreamer';
+import { useAudioStreamer, type LiveRiskData } from '../hooks/useAudioStreamer';
 import { apiFetch } from '../lib/api';
 
 /* ========================================
@@ -574,6 +592,7 @@ export default function DashboardPage() {
   const [selectedPhone, setSelectedPhone] = useState<string>('+91 98200 12345');
   const [isExtractedFromSpeech, setIsExtractedFromSpeech] = useState<boolean>(false);
   const [isInterceptorOpen, setIsInterceptorOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'intelligence' | 'forensics' | 'history' | 'terminal'>('intelligence');
 
   const handleLiveIntentExtracted = useCallback((intent: {
     amount?: number | null;
@@ -596,12 +615,76 @@ export default function DashboardPage() {
   const [dbSessions, setDbSessions] = useState<SessionLogItem[]>([]);
   const sessionScoresCacheRef = useRef<Record<string, number>>({});
 
-  // Auto-open Security Interceptor Modal on HIGH / CRITICAL alerts
+  // Real-time telephony call state (Zoiper mobile/desktop, Asterisk PBX)
+  const [telemetryRiskData, setTelemetryRiskData] = useState<LiveRiskData | null>(null);
+  const [isTelephonyActive, setIsTelephonyActive] = useState<boolean>(false);
+  const [telephonyCaller, setTelephonyCaller] = useState<string>('Live Softphone');
+
+  // Connect to backend TelemetryHub for instant real-time fan-out from phone calls & SIP media
   useEffect(() => {
-    if (riskData && (riskData.should_alert || riskData.level === 'CRITICAL' || riskData.level === 'HIGH')) {
+    let ws: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let isCancelled = false;
+
+    const connect = () => {
+      if (isCancelled) return;
+      try {
+        ws = new WebSocket('ws://localhost:8000/ws/telemetry');
+        ws.onopen = () => {
+          console.log('[Dashboard] Subscribed to backend live telemetry stream (/ws/telemetry)');
+        };
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'session_ended') {
+              setIsTelephonyActive(false);
+              setTelemetryRiskData(null);
+              return;
+            }
+            if (data.score !== undefined) {
+              setTelemetryRiskData(data);
+              setIsTelephonyActive(true);
+              if (data.caller_phone || data.caller_id) {
+                setTelephonyCaller(data.caller_phone || data.caller_id);
+              }
+            }
+          } catch (err) {
+            console.error('[Dashboard] Telemetry parse error:', err);
+          }
+        };
+        ws.onclose = () => {
+          if (!isCancelled) {
+            reconnectTimer = window.setTimeout(connect, 2000);
+          }
+        };
+        ws.onerror = () => {
+          try { ws?.close(); } catch {}
+        };
+      } catch (err) {
+        if (!isCancelled) {
+          reconnectTimer = window.setTimeout(connect, 2000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      isCancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws) {
+        try { ws.close(); } catch {}
+      }
+    };
+  }, []);
+
+  // Auto-open Security Interceptor Modal on HIGH / CRITICAL alerts (mic or phone call)
+  useEffect(() => {
+    const active = riskData || telemetryRiskData;
+    if (active && (active.should_alert || active.level === 'CRITICAL' || active.level === 'HIGH')) {
       setIsInterceptorOpen(true);
     }
-  }, [riskData]);
+  }, [riskData, telemetryRiskData]);
 
   // Continuously record live scores in cache
   useEffect(() => {
@@ -668,7 +751,6 @@ export default function DashboardPage() {
 
   // Fast staggered fetch when monitoring stops
   const handleStopMonitoring = useCallback(() => {
-    // Optimistically update session log immediately with current session
     if (riskData?.session_id) {
       const shortId = riskData.session_id.slice(0, 5);
       const score = riskData.score || 0.08;
@@ -697,7 +779,6 @@ export default function DashboardPage() {
 
     stopMonitoring();
 
-    // Rapid DB re-queries to guarantee latest committed score from PostgreSQL
     setTimeout(fetchSessions, 200);
     setTimeout(fetchSessions, 600);
     setTimeout(fetchSessions, 1200);
@@ -705,11 +786,8 @@ export default function DashboardPage() {
   }, [riskData, recordingTime, stopMonitoring, fetchSessions]);
 
   const handleStartMonitoring = (file?: File | React.MouseEvent) => {
-    if (isMonitoring) return; // Prevent double-start
-    const profId = selectedProfileId || (speakerProfiles.length > 0 ? speakerProfiles[0].id : undefined);
-    if (!selectedProfileId && profId) {
-      setSelectedProfileId(profId);
-    }
+    if (isMonitoring) return;
+    const profId = selectedProfileId || undefined;
     const context = {
       location: selectedLocation,
       amount: selectedAmount,
@@ -723,15 +801,17 @@ export default function DashboardPage() {
     }
   };
 
-  // Return to default idle score when monitoring stops
+  // Active risk data from either local mic or real-time telephony stream
+  const activeRiskData = isMonitoring ? riskData : (isTelephonyActive ? telemetryRiskData : null);
+  const isAnyMonitoring = isMonitoring || isTelephonyActive;
+
   const DEFAULT_IDLE_SCORE = 0.00;
-  const currentScore = isMonitoring && riskData ? riskData.score : DEFAULT_IDLE_SCORE;
-  const deepfakeSubScore = isMonitoring && riskData ? riskData.raw_components.deepfake : 0.00;
-  const speakerMatchScore = isMonitoring && riskData && riskData.has_enrollment ? riskData.raw_components.speaker_match : null;
-  const speakerSubScore = isMonitoring && riskData && riskData.has_enrollment ? max(0, 1.0 - riskData.raw_components.speaker_match) : 0.0;
-  const prosodySubScore = isMonitoring && riskData ? riskData.raw_components.prosody : 0.00;
-  const latencyMs = isMonitoring && riskData ? riskData.latency_ms : 0;
-  const isHighRisk = isMonitoring && currentScore >= 0.6;
+  const currentScore = isAnyMonitoring && activeRiskData ? activeRiskData.score : DEFAULT_IDLE_SCORE;
+  const deepfakeSubScore = isAnyMonitoring && activeRiskData ? activeRiskData.raw_components.deepfake : 0.00;
+  const speakerMatchScore = isAnyMonitoring && activeRiskData && activeRiskData.has_enrollment ? activeRiskData.raw_components.speaker_match : null;
+  const prosodySubScore = isAnyMonitoring && activeRiskData ? activeRiskData.raw_components.prosody : 0.00;
+  const latencyMs = isAnyMonitoring && activeRiskData ? activeRiskData.latency_ms : 0;
+  const isHighRisk = isAnyMonitoring && currentScore >= 0.6;
 
   const triggerCountermeasure = async (action: string) => {
     const actionMap: Record<string, string> = {
@@ -762,329 +842,558 @@ export default function DashboardPage() {
     setTimeout(() => setCountermeasureStatus(null), 6000);
   };
 
-  function max(a: number, b: number) { return a > b ? a : b; }
-
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
     const sec = (s % 60).toString().padStart(2, '0');
     return `${m}:${sec}`;
   };
 
+  const getRiskBadgeColor = (score: number) => {
+    if (score < 0.30) return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'LOW THREAT' };
+    if (score < 0.60) return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'ELEVATED' };
+    if (score < 0.80) return { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', label: 'HIGH RISK' };
+    return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', label: 'CRITICAL' };
+  };
+
+  const threatBadge = getRiskBadgeColor(currentScore);
+
   return (
     <>
-      <div className="min-h-screen pt-20 pb-8 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between gap-4 mb-5"
-          >
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
-                Monitoring Dashboard
-                {isMonitoring && riskData?.profile_name && (
-                  <span className="text-xs px-2.5 py-1 rounded-lg bg-[rgba(0,229,200,0.12)] text-[var(--color-accent-primary)] font-semibold border border-[rgba(0,229,200,0.2)]">
-                    Target Speaker: {riskData.profile_name}
-                  </span>
-                )}
-              </h1>
-              <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-0.5">
+      <div className="min-h-screen pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto">
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Grace Countdown Banner */}
+        <AnimatePresence>
+          {graceCountdown !== null && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-3 shadow-md"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400 animate-spin" />
+                <span>Playback finished. Results auto-saving in <strong>{graceCountdown}s</strong>.</span>
+              </div>
+              <button
+                onClick={handleStopMonitoring}
+                className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-bold"
+              >
+                Dismiss Now
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── 1. Top Mission Control Header ── */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-6 border-b border-[var(--color-sentinel-border-subtle)]">
+          <div>
+            <div className="flex items-center gap-2.5 mb-1">
+              <span className="px-2.5 py-0.5 rounded-md bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)]/30 text-[10px] font-bold tracking-wider uppercase text-[var(--color-accent-primary)]">
+                SURVEILLANCE MISSION CONTROL
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-[var(--color-sentinel-text-dim)]">
+                <span className={`w-2 h-2 rounded-full ${isAnyMonitoring ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
                 {isMonitoring
-                  ? `Live WebSocket stream active (${isConnected ? 'Backend Connected' : 'Connecting...'}) — ${formatTime(recordingTime)}`
-                  : selectedProfileId
-                  ? 'Speaker profile selected. Ready for live analysis.'
-                  : 'Select an enrolled speaker profile in the left panel to begin monitoring'
-                }
+                  ? `Live Mic Feed (${formatTime(recordingTime)})`
+                  : isTelephonyActive
+                  ? `SIP Trunk Active (${telephonyCaller})`
+                  : 'Engine Standby'}
+              </span>
+            </div>
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-[var(--color-sentinel-text)] flex items-center gap-3">
+              Real-Time Voice Forensics & Threat Interception
+            </h1>
+          </div>
+
+          {/* Quick Primary Actions */}
+          <div className="flex items-center gap-3 shrink-0">
+            {isMonitoring ? (
+              <button
+                onClick={handleStopMonitoring}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+              >
+                <Square className="w-4 h-4 fill-white" /> Stop Sentinel Stream
+              </button>
+            ) : (
+              <button
+                onClick={() => handleStartMonitoring()}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-accent-primary)] hover:brightness-110 text-[#0c0d14] font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+              >
+                <Mic className="w-4 h-4" /> Start Voice Sentinel
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-sentinel-surface)] hover:bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text)] border border-[var(--color-sentinel-border)] text-xs font-semibold transition-all cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-[var(--color-accent-primary)]" /> Upload Audio
+            </button>
+          </div>
+        </div>
+
+        {/* ── 2. Top Glance KPI Cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* KPI 1: Active Audio Feed */}
+          <div className="p-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]/80 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-[var(--color-sentinel-text-dim)] mb-2">
+              <span className="font-semibold uppercase tracking-wider text-[10px]">Audio Ingress Channel</span>
+              <Radio className={`w-4 h-4 ${isAnyMonitoring ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}`} />
+            </div>
+            <div>
+              <p className="text-base font-bold text-[var(--color-sentinel-text)] truncate">
+                {isMonitoring
+                  ? (isConnected ? 'Live Microphone Feed' : 'Connecting Audio...')
+                  : isTelephonyActive
+                  ? `SIP Call (${telephonyCaller})`
+                  : 'Idle (Awaiting Stream)'}
               </p>
-            </div>
-          </motion.div>
-
-          {/* ── Modern 2-Column Command Grid: Left Telemetry Rail + Right Forensic Stage ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            {/* Left Telemetry Rail (Persistent Inspector & Mission Control) */}
-            <div className="lg:col-span-3 lg:sticky lg:top-20">
-              <TelemetrySidebar
-                isMonitoring={isMonitoring}
-                isConnected={isConnected}
-                latencyMs={latencyMs}
-                recordingTime={recordingTime}
-                selectedProfileId={selectedProfileId}
-                setSelectedProfileId={setSelectedProfileId}
-                speakerProfiles={speakerProfiles}
-                onStartMonitoring={handleStartMonitoring}
-                onStopMonitoring={handleStopMonitoring}
-                onOpenUpload={() => setShowUpload(true)}
-                formatTime={formatTime}
-                location={selectedLocation}
-                amount={selectedAmount}
-                transferType={selectedTransferType}
-                callerPhone={selectedPhone}
-                onPhoneChange={setSelectedPhone}
-                contextRisk={riskData?.context_risk}
-                riskLevel={riskData?.level || 'LOW'}
-                riskScore={currentScore}
-                isExtractedFromSpeech={isExtractedFromSpeech}
-                error={error}
-              />
-            </div>
-
-            {/* Right Main Stage: Primary Forensics, STT, Logs & Alerts */}
-            <div className="lg:col-span-9 flex flex-col gap-5">
-
-          {/* File Playback Complete — 10s Grace Action Window */}
-          <AnimatePresence>
-            {graceCountdown !== null && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="mb-6 rounded-2xl border border-[var(--color-risk-medium)] bg-[rgba(245,197,66,0.08)] p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[rgba(245,197,66,0.15)] flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5 text-[var(--color-risk-medium)] animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--color-risk-medium)] uppercase tracking-wider flex items-center gap-2">
-                      Audio Analysis Complete · Action Window Open
-                    </h4>
-                    <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5">
-                      Uploaded file finished playing. Results will automatically save and close in <strong className="text-[var(--color-risk-medium)] font-mono text-sm">{graceCountdown}s</strong>. Take relevant countermeasures or dismiss.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="px-3 py-1 rounded-lg bg-[var(--color-sentinel-surface-3)] text-xs font-mono font-bold text-[var(--color-risk-medium)] border border-[var(--color-risk-medium)]">
-                    Closing in {graceCountdown}s
-                  </span>
-                  <button
-                    onClick={handleStopMonitoring}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-3)] transition-colors border border-[var(--color-sentinel-border)]"
-                  >
-                    Dismiss Now
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Actionable Risk Countermeasure Banner (High Risk Warning) */}
-          <AnimatePresence>
-            {(isHighRisk || countermeasureStatus) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-6 rounded-2xl border border-[var(--color-risk-critical)] bg-[rgba(239,68,68,0.08)] p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
-                    <ShieldAlert className="w-6 h-6 text-red-400 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
-                      High Impersonation Risk Alert Detected ({ (currentScore * 100).toFixed(0) }%)
-                    </h3>
-                    <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5 leading-relaxed">
-                      {riskData?.alert_reason || 'Synthetic voice signatures or speaker identity mismatch detected. Immediate secondary verification recommended before approving sensitive financial operations.'}
-                    </p>
-                    {countermeasureStatus && (
-                      <p className="text-xs font-bold text-[var(--color-accent-primary)] mt-1.5 animate-pulse">
-                        ✓ {countermeasureStatus}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => triggerCountermeasure("Voice Callback Initiated")}
-                    className="px-3.5 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition-all"
-                  >
-                    📞 Initiate Callback Verification
-                  </button>
-                  <button
-                    onClick={() => triggerCountermeasure("Push MFA Sent to Enrolled Mobile")}
-                    className="px-3.5 py-2 rounded-xl bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)] text-xs font-bold text-[var(--color-accent-primary)] hover:brightness-110 transition-all"
-                  >
-                    🔐 Request Push MFA
-                  </button>
-                  <button
-                    onClick={() => triggerCountermeasure("Escalated to Supervisor Security Desk")}
-                    className="px-3.5 py-2 rounded-xl bg-[var(--color-sentinel-surface-3)] border border-[var(--color-sentinel-border)] text-xs font-bold text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all"
-                  >
-                    ⚠️ Escalate to Supervisor
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Primary Real-Time Forensics Row: Audio Waveform + Impersonation Risk Gauge */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5"
-          >
-            {/* Audio Visualizer */}
-            <div className="lg:col-span-8 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Live Audio Stream Forensics</h3>
-                  <div className="flex items-center gap-2.5 text-[10px]">
-                    {isMonitoring && (
-                      <button
-                        onClick={handleStopMonitoring}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 font-bold hover:bg-red-500/30 transition-all text-xs cursor-pointer shadow-sm"
-                      >
-                        <Square className="w-3 h-3 text-red-400 fill-red-400" /> Stop Stream
-                      </button>
-                    )}
-                    <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full font-semibold ${
-                      isMonitoring
-                        ? 'bg-[rgba(0,229,200,0.1)] text-[var(--color-risk-low)]'
-                        : 'bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text-dim)]'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isMonitoring ? 'bg-[var(--color-risk-low)] animate-pulse' : 'bg-[var(--color-sentinel-text-dim)]'}`} />
-                      {isMonitoring ? (isConnected ? 'Backend Streaming Active' : 'Connecting WebSocket') : 'Idle / Stopped'}
-                    </span>
-                    <span className="text-[var(--color-sentinel-text-dim)]">16kHz · Mono PCM</span>
-                  </div>
-                </div>
-                <AudioVisualizer isActive={isMonitoring} variant="waveform" height={140} />
-                <div className="mt-3">
-                  <AudioVisualizer isActive={isMonitoring} variant="bars" height={70} />
-                </div>
-              </div>
-            </div>
-
-            {/* Impersonation Risk Gauge */}
-            <div className="lg:col-span-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col items-center justify-between">
-              <div className="flex items-center justify-between w-full mb-2">
-                <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Impersonation Risk Score</h3>
-                <span className="text-[9px] text-[var(--color-sentinel-text-dim)] px-2 py-0.5 rounded bg-[var(--color-sentinel-surface-3)]">
-                  EMA α=0.3
-                </span>
-              </div>
-              <RiskGauge score={currentScore} size={220} />
-
-              {/* Sub-scores */}
-              <div className="flex items-center gap-4 mt-2 transition-opacity duration-300 w-full justify-center">
-                {[
-                  { label: 'Deepfake Prob', v: deepfakeSubScore, c: 'var(--color-accent-primary)' },
-                  { 
-                    label: riskData?.has_enrollment ? `Speaker Match (${(speakerMatchScore! * 100).toFixed(0)}%)` : 'Speaker Verification', 
-                    v: speakerSubScore, 
-                    c: 'var(--color-accent-purple)',
-                    disabled: !riskData?.has_enrollment 
-                  },
-                  { label: 'Prosody Anomaly', v: prosodySubScore, c: 'var(--color-risk-medium)' },
-                ].map(s => (
-                  <div key={s.label} className="flex flex-col items-center gap-1">
-                    <span className="text-[9px] text-[var(--color-sentinel-text-dim)] text-center leading-tight truncate max-w-[85px]">{s.label}</span>
-                    <div className="w-14 h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] overflow-hidden">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ background: s.c }}
-                        animate={{ width: `${Math.min(s.v * 100, 100)}%` }}
-                        transition={{ duration: 0.5 }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-bold text-[var(--color-sentinel-text-muted)]">
-                      {s.disabled ? 'Unlinked' : `${(s.v * 100).toFixed(0)}%`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Forensic Bio-Acoustic Radar */}
-          <ForensicAcousticRadar
-            modelDetail={riskData?.model_detail}
-            isMonitoring={isMonitoring}
-          />
-
-          {/* Live Forensic Intelligence Studio (Speech-to-Text & Telephony) */}
-          <LiveCallIntelligenceStudio
-            isMonitoring={isMonitoring}
-            onIntentExtracted={handleLiveIntentExtracted}
-            onCallStart={(geo) => {
-              if (geo?.city && geo?.region) {
-                setSelectedLocation(`${geo.city}, ${geo.region} (${geo.country_code})`);
-              }
-            }}
-            onCallerIdentified={(phone, _name) => {
-              if (phone) setSelectedPhone(phone);
-            }}
-            onTriggerCallMonitoring={() => {
-              handleStartMonitoring();
-            }}
-          />
-
-          {/* Operational Logs & Alerts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
-            {/* Session Logs */}
-            <div className="lg:col-span-8 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[360px] max-h-[440px] overflow-y-auto flex flex-col justify-between">
-              <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} liveRiskScore={currentScore} sessions={dbSessions} />
-            </div>
-
-            {/* Security Alerts */}
-            <div className="lg:col-span-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[360px] max-h-[440px] overflow-y-auto">
-              <AlertsPanel alerts={alerts} />
+              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 font-mono">
+                {isAnyMonitoring ? `16kHz · Mono PCM · ${latencyMs}ms` : 'Dial 5000 in Zoiper to stream'}
+              </p>
             </div>
           </div>
 
-            {/* Scoring formula */}
-            <div className="mt-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
-              <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3">Ensemble Model Breakdown</h3>
-              <div className="bg-[var(--color-sentinel-surface-2)] rounded-xl p-4 text-sm text-[var(--color-sentinel-text-muted)] overflow-x-auto font-mono text-xs">
-                <div>
-                  <span className="text-[var(--color-accent-primary)] font-semibold">S_ensemble</span> = 
-                  {riskData?.has_enrollment 
-                    ? ' 0.40×AASIST/XLS-R + 0.35×ECAPA-TDNN (Speaker Verification) + 0.15×Prosody + 0.10×SpeakerDrift'
-                    : ' 0.60×AASIST/XLS-R (Deepfake) + 0.30×Prosody (Forensics) + 0.10×SpeakerDrift [Adaptive Re-normalized Mode]'
-                  }
-                </div>
-                <div className="mt-2 text-[var(--color-sentinel-text-dim)]">
-                  {riskData ? (
-                    <>AASIST: {riskData.model_detail.aasist_score ?? 'N/A'} | XLS-R: {riskData.model_detail.xlsr_score ?? 'N/A'} | ECAPA Sim: {riskData.model_detail.speaker_similarity !== undefined ? `${(riskData.model_detail.speaker_similarity * 100).toFixed(1)}%` : 'N/A'} | Jitter: {riskData.model_detail.prosody.jitter} | HNR: {riskData.model_detail.prosody.hnr} dB</>
-                  ) : (
-                    'AASIST (Graph Attention) + XLS-R 300M (Multilingual SSL) + ECAPA-TDNN + Parselmouth Prosody'
-                  )}
-                </div>
-              </div>
+          {/* KPI 2: Impersonation Threat Score */}
+          <div className="p-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]/80 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-[var(--color-sentinel-text-dim)] mb-2">
+              <span className="font-semibold uppercase tracking-wider text-[10px]">Acoustic Threat Score</span>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${threatBadge.bg} ${threatBadge.text} ${threatBadge.border}`}>
+                {threatBadge.label}
+              </span>
             </div>
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black font-mono text-[var(--color-sentinel-text)]">
+                  {(currentScore * 100).toFixed(0)}%
+                </span>
+                <span className="text-xs text-[var(--color-sentinel-text-dim)] font-mono">
+                  / 100 Risk
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 truncate">
+                {activeRiskData?.alert_reason || 'Ensemble AASIST + XLS-R + ECAPA'}
+              </p>
+            </div>
+          </div>
 
-            {/* Live Model Inference Logs Terminal */}
-            <div className="mt-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
-              <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3 flex items-center gap-2">
-                Live Pipeline Logs <span className="animate-pulse w-2 h-2 rounded-full bg-[var(--color-risk-low)]"></span>
-              </h3>
-              <div className="bg-[#1e1e2e] rounded-xl p-4 h-64 overflow-y-auto font-mono text-xs text-[#a6accd] flex flex-col gap-2">
-                {modelLogs.length === 0 ? (
-                   <span className="text-gray-500 italic">Waiting for audio stream...</span>
-                ) : (
-                  modelLogs.map((log, idx) => (
-                    <div key={`${log.timestamp}-${log.chunk_index}-${idx}`} className="border-b border-[#313244] pb-2 mb-2 last:border-0 last:mb-0 last:pb-0">
-                      <span className="text-[#89b4fa]">[{log.timestamp}]</span> <span className="text-[#cba6f7]">Chunk #{log.chunk_index}</span>
-                      <br/>
-                      <span className="text-[#f38ba8]">Deepfake (AASIST):</span> {log.details.aasist_score?.toFixed(4) ?? 'N/A'} | <span className="text-[#f38ba8]">XLS-R:</span> {log.details.xlsr_score?.toFixed(4) ?? 'N/A'}
-                      <br/>
-                      <span className="text-[#a6e3a1]">Speaker:</span> Verified: {log.details.speaker_verified ? 'Yes' : 'No'} | Sim: {log.details.speaker_similarity !== undefined ? log.details.speaker_similarity.toFixed(4) : 'N/A'}
-                      <br/>
-                      <span className="text-[#f9e2af]">Prosody:</span> f0_mean: {log.details.prosody.f0_mean.toFixed(2)}, jitter: {log.details.prosody.jitter.toFixed(4)}, hnr: {log.details.prosody.hnr.toFixed(2)}
-                    </div>
-                  ))
-                )}
+          {/* KPI 3: Voice Biometrics */}
+          <div className="p-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]/80 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-[var(--color-sentinel-text-dim)] mb-2">
+              <span className="font-semibold uppercase tracking-wider text-[10px]">Voice Biometric Match</span>
+              <Fingerprint className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-[var(--color-sentinel-text)] truncate">
+                {riskData?.profile_name 
+                  ? riskData.profile_name 
+                  : (selectedProfileId ? 'Selected Profile' : 'Unenrolled Caller')}
+              </p>
+              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 font-mono">
+                {speakerMatchScore !== null 
+                  ? `${(speakerMatchScore * 100).toFixed(1)}% Similarity (ECAPA)` 
+                  : 'Adaptive baseline mode'}
+              </p>
+            </div>
+          </div>
+
+          {/* KPI 4: Financial Context & Intent */}
+          <div className="p-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]/80 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs text-[var(--color-sentinel-text-dim)] mb-2">
+              <span className="font-semibold uppercase tracking-wider text-[10px]">Financial Interception</span>
+              {isExtractedFromSpeech && (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                  AUTO-EXTRACTED
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-base font-bold text-[var(--color-sentinel-text)] truncate">
+                ₹{selectedAmount.toLocaleString('en-IN')} · {selectedTransferType}
+              </p>
+              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 truncate">
+                {selectedLocation}
+              </p>
             </div>
           </div>
         </div>
+
+        {/* ── High Risk Alert Banner (conditional) ── */}
+        <AnimatePresence>
+          {(isHighRisk || countermeasureStatus) && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                    High Impersonation Threat Intercepted ({(currentScore * 100).toFixed(0)}%)
+                  </h3>
+                  <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5 leading-relaxed">
+                    {riskData?.alert_reason || 'Synthetic voice signatures or speaker identity mismatch detected. Immediate verification recommended.'}
+                  </p>
+                  {countermeasureStatus && (
+                    <p className="text-xs font-bold text-[var(--color-accent-primary)] mt-1 animate-pulse">
+                      ✓ {countermeasureStatus}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  onClick={() => triggerCountermeasure("Voice Callback Initiated")}
+                  className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition-all cursor-pointer"
+                >
+                  📞 Initiate Callback
+                </button>
+                <button
+                  onClick={() => triggerCountermeasure("Push MFA Sent to Enrolled Mobile")}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)] text-xs font-bold text-[var(--color-accent-primary)] hover:brightness-110 transition-all cursor-pointer"
+                >
+                  🔐 Push MFA
+                </button>
+                <button
+                  onClick={() => triggerCountermeasure("Escalated to Supervisor Security Desk")}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--color-sentinel-surface-3)] border border-[var(--color-sentinel-border)] text-xs font-bold text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all cursor-pointer"
+                >
+                  ⚠️ Escalate
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── 3. Primary Surveillance Hero Section (Split 7 / 5) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+          {/* Left (7 cols): Live Audio Spectrum & Waveform Forensics */}
+          <div className="lg:col-span-7 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col justify-between shadow-xl">
+            <div>
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--color-sentinel-border-subtle)]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-[var(--color-accent-primary-dim)] text-[var(--color-accent-primary)]">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-sentinel-text)]">
+                      Live Acoustic Stream Forensics
+                    </h3>
+                    <p className="text-[10px] text-[var(--color-sentinel-text-dim)]">
+                      Dual-domain waveform & frequency spectral breakdown
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="px-2.5 py-1 rounded-md bg-[var(--color-sentinel-surface-2)] text-[var(--color-sentinel-text-muted)] font-mono border border-[var(--color-sentinel-border-subtle)]">
+                    16kHz · Mono PCM
+                  </span>
+                  {isAnyMonitoring && (
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      STREAMING
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Waveform & Bars */}
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden bg-[var(--color-sentinel-surface-2)]/60 border border-[var(--color-sentinel-border-subtle)] p-2">
+                  <AudioVisualizer isActive={isAnyMonitoring} variant="waveform" height={130} />
+                </div>
+                <div className="rounded-xl overflow-hidden bg-[var(--color-sentinel-surface-2)]/60 border border-[var(--color-sentinel-border-subtle)] p-2">
+                  <AudioVisualizer isActive={isAnyMonitoring} variant="bars" height={60} />
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Context / Profile Bar at bottom of visualizer */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-4 border-t border-[var(--color-sentinel-border-subtle)] text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-sentinel-text-dim)]">
+                  Target Speaker Profile:
+                </span>
+                <select
+                  value={selectedProfileId}
+                  onChange={(e) => setSelectedProfileId(e.target.value)}
+                  disabled={isMonitoring}
+                  className="px-2.5 py-1 rounded-lg bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-xs text-[var(--color-sentinel-text)] font-semibold focus:outline-none cursor-pointer disabled:opacity-60"
+                >
+                  <option value="">General Monitoring (Unenrolled)</option>
+                  {speakerProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (Enrolled)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-[var(--color-sentinel-text-dim)] font-mono">
+                <span>Latency: <strong className="text-cyan-400">{latencyMs}ms</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right (5 cols): Biometric Threat Gauge & Sub-Score Indicators */}
+          <div className="lg:col-span-5 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 flex flex-col justify-between shadow-xl">
+            <div>
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-[var(--color-sentinel-border-subtle)]">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-sm font-bold text-[var(--color-sentinel-text)]">
+                    Impersonation Risk Engine
+                  </h3>
+                </div>
+                <span className="text-[9px] text-[var(--color-sentinel-text-dim)] px-2 py-0.5 rounded bg-[var(--color-sentinel-surface-3)] font-mono">
+                  EMA α=0.3
+                </span>
+              </div>
+
+              {/* Gauge */}
+              <div className="flex justify-center py-2">
+                <RiskGauge score={currentScore} size={190} />
+              </div>
+
+              {/* 3 Core Forensic Indicators */}
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <div className="p-2.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] flex flex-col items-center text-center">
+                  <span className="text-[10px] text-[var(--color-sentinel-text-dim)] font-semibold">Deepfake Prob</span>
+                  <div className="w-full h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] overflow-hidden my-1.5">
+                    <div className="h-full bg-cyan-400 transition-all duration-500" style={{ width: `${Math.min(deepfakeSubScore * 100, 100)}%` }} />
+                  </div>
+                  <span className="text-xs font-bold font-mono text-[var(--color-sentinel-text)]">
+                    {(deepfakeSubScore * 100).toFixed(0)}%
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] flex flex-col items-center text-center">
+                  <span className="text-[10px] text-[var(--color-sentinel-text-dim)] font-semibold">Voice Match</span>
+                  <div className="w-full h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] overflow-hidden my-1.5">
+                    <div className="h-full bg-purple-400 transition-all duration-500" style={{ width: `${Math.min((speakerMatchScore || 0) * 100, 100)}%` }} />
+                  </div>
+                  <span className="text-xs font-bold font-mono text-[var(--color-sentinel-text)]">
+                    {speakerMatchScore !== null ? `${(speakerMatchScore * 100).toFixed(0)}%` : 'N/A'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] flex flex-col items-center text-center">
+                  <span className="text-[10px] text-[var(--color-sentinel-text-dim)] font-semibold">Prosody Anomaly</span>
+                  <div className="w-full h-1.5 rounded-full bg-[var(--color-sentinel-surface-3)] overflow-hidden my-1.5">
+                    <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${Math.min(prosodySubScore * 100, 100)}%` }} />
+                  </div>
+                  <span className="text-xs font-bold font-mono text-[var(--color-sentinel-text)]">
+                    {(prosodySubScore * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Context Pill */}
+            <div className="pt-3 mt-3 border-t border-[var(--color-sentinel-border-subtle)] flex items-center justify-between text-[11px] text-[var(--color-sentinel-text-dim)]">
+              <span>Target: <strong className="text-[var(--color-sentinel-text)]">{selectedPhone}</strong></span>
+              <span>Context Weight: <strong className="text-cyan-400">+{Math.round((activeRiskData?.context_risk || 0) * 100)}%</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── 4. Tabbed Deep Intelligence Workspace ── */}
+        <div className="space-y-4">
+          {/* Tab Navigation Pill Bar */}
+          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] shadow-md overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('intelligence')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'intelligence'
+                  ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
+                  : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Live Speech & Telephony Studio
+              {isAnyMonitoring && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('forensics')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'forensics'
+                  ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
+                  : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              Bio-Acoustic Radar & Ensemble Breakdown
+            </button>
+
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'history'
+                  ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
+                  : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Session Logs & Security Alerts
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-[var(--color-sentinel-surface-3)] text-[var(--color-sentinel-text)]">
+                {alerts.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('terminal')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'terminal'
+                  ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
+                  : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
+              }`}
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              Pipeline Inference Terminal
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+            </button>
+          </div>
+
+          {/* Tab Content Panels */}
+          <div>
+            {/* Tab 1: Live Speech & Telephony Studio */}
+            {activeTab === 'intelligence' && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <LiveCallIntelligenceStudio
+                  isMonitoring={isAnyMonitoring}
+                  onIntentExtracted={handleLiveIntentExtracted}
+                  onCallStart={(geo) => {
+                    if (geo?.city && geo?.region) {
+                      setSelectedLocation(`${geo.city}, ${geo.region} (${geo.country_code})`);
+                    }
+                  }}
+                  onCallerIdentified={(phone, _name) => {
+                    if (phone) setSelectedPhone(phone);
+                  }}
+                  onTriggerCallMonitoring={() => {
+                    handleStartMonitoring();
+                  }}
+                />
+              </motion.div>
+            )}
+
+            {/* Tab 2: Bio-Acoustic Radar & Ensemble Breakdown */}
+            {activeTab === 'forensics' && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <ForensicAcousticRadar
+                  modelDetail={activeRiskData?.model_detail}
+                  isMonitoring={isAnyMonitoring}
+                />
+
+                <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5">
+                  <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-3">
+                    Ensemble Mathematical Model Breakdown
+                  </h3>
+                  <div className="bg-[var(--color-sentinel-surface-2)] rounded-xl p-4 text-xs font-mono text-[var(--color-sentinel-text-muted)] overflow-x-auto space-y-2">
+                    <div>
+                      <span className="text-[var(--color-accent-primary)] font-bold">S_ensemble</span> = 
+                      {riskData?.has_enrollment 
+                        ? ' 0.40×AASIST/XLS-R + 0.35×ECAPA-TDNN (Speaker Verification) + 0.15×Prosody + 0.10×SpeakerDrift'
+                        : ' 0.60×AASIST/XLS-R (Deepfake) + 0.30×Prosody (Forensics) + 0.10×SpeakerDrift [Adaptive Re-normalized Mode]'
+                      }
+                    </div>
+                    <div className="text-[var(--color-sentinel-text-dim)] pt-2 border-t border-[var(--color-sentinel-border-subtle)]">
+                      {riskData ? (
+                        <>AASIST: {riskData.model_detail.aasist_score ?? 'N/A'} | XLS-R: {riskData.model_detail.xlsr_score ?? 'N/A'} | ECAPA Sim: {riskData.model_detail.speaker_similarity !== undefined ? `${(riskData.model_detail.speaker_similarity * 100).toFixed(1)}%` : 'N/A'} | Jitter: {riskData.model_detail.prosody.jitter} | HNR: {riskData.model_detail.prosody.hnr} dB</>
+                      ) : (
+                        'AASIST (Graph Attention) + XLS-R 300M (Multilingual SSL) + ECAPA-TDNN + Parselmouth Prosody'
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Tab 3: Session Logs & Security Alerts */}
+            {activeTab === 'history' && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-5"
+              >
+                <div className="lg:col-span-8 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[360px] max-h-[480px] overflow-y-auto">
+                  <SessionsPanel isMonitoring={isMonitoring} sessionId={riskData?.session_id} liveRiskScore={currentScore} sessions={dbSessions} />
+                </div>
+                <div className="lg:col-span-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 min-h-[360px] max-h-[480px] overflow-y-auto">
+                  <AlertsPanel alerts={alerts} />
+                </div>
+              </motion.div>
+            )}
+
+            {/* Tab 4: Pipeline Inference Terminal */}
+            {activeTab === 'terminal' && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 shadow-xl"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-cyan-400" />
+                    Live ML Model Inference Stream
+                  </h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono">
+                    {modelLogs.length} chunks analyzed
+                  </span>
+                </div>
+
+                <div className="bg-[#141622] rounded-xl p-4 h-80 overflow-y-auto font-mono text-xs text-[#a6accd] flex flex-col gap-2 border border-[#2a2d3d]">
+                  {modelLogs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500 italic">
+                      <Terminal className="w-6 h-6 mb-2 text-gray-600" />
+                      Awaiting live audio chunks for real-time model inference...
+                    </div>
+                  ) : (
+                    modelLogs.map((log, idx) => (
+                      <div key={`${log.timestamp}-${log.chunk_index}-${idx}`} className="border-b border-[#252839] pb-2 mb-1 last:border-0 last:mb-0 last:pb-0">
+                        <span className="text-[#89b4fa]">[{log.timestamp}]</span> <span className="text-[#cba6f7]">Chunk #{log.chunk_index}</span>
+                        <br/>
+                        <span className="text-[#f38ba8]">Deepfake (AASIST):</span> {log.details.aasist_score?.toFixed(4) ?? 'N/A'} | <span className="text-[#f38ba8]">XLS-R:</span> {log.details.xlsr_score?.toFixed(4) ?? 'N/A'}
+                        <br/>
+                        <span className="text-[#a6e3a1]">Speaker:</span> Verified: {log.details.speaker_verified ? 'Yes' : 'No'} | Sim: {log.details.speaker_similarity !== undefined ? log.details.speaker_similarity.toFixed(4) : 'N/A'}
+                        <br/>
+                        <span className="text-[#f9e2af]">Prosody:</span> f0_mean: {log.details.prosody.f0_mean.toFixed(2)}, jitter: {log.details.prosody.jitter.toFixed(4)}, hnr: {log.details.prosody.hnr.toFixed(2)}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
 
       {/* Upload Modal */}
       <AnimatePresence>
@@ -1103,10 +1412,11 @@ export default function DashboardPage() {
         isOpen={isInterceptorOpen}
         onClose={() => setIsInterceptorOpen(false)}
         riskScore={currentScore}
-        threatCategory={riskData?.level === 'CRITICAL' ? 'VOICE_CLONE_IMPERSONATION' : 'SYNTHETIC_SPEAKER'}
-        reason={riskData?.alert_reason || 'AI voice synthesis artifacts detected on active call channel.'}
-        sessionId={riskData?.session_id}
-        callerId={riskData?.profile_name ? `${selectedPhone} (${riskData.profile_name})` : selectedPhone}
+        threatCategory={activeRiskData?.level === 'CRITICAL' ? 'VOICE_CLONE_IMPERSONATION' : 'SYNTHETIC_SPEAKER'}
+        reason={activeRiskData?.alert_reason || 'AI voice synthesis artifacts detected on active call channel.'}
+        sessionId={activeRiskData?.session_id}
+        callerId={activeRiskData?.profile_name ? `${selectedPhone} (${activeRiskData.profile_name})` : (telephonyCaller || selectedPhone)}
+        callerPhone={selectedPhone}
       />
     </>
   );

@@ -284,7 +284,7 @@ def analyze_conversation_transcript(text: str) -> ExtractedIntent:
     channel = extract_transaction_channel(text)
     urgency_level, urgency_cues, coercion_cues = extract_urgency_and_coercion(text)
 
-    formatted_amount = f"${amount:,.2f}" if amount is not None else None
+    formatted_amount = f"₹{amount:,.0f}" if amount is not None else None
 
     # Construct descriptive summary
     parts = []
