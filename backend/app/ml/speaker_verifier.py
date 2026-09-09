@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 import numpy as np
+import onnxruntime as ort
 import torch
 from numpy.linalg import norm
 
@@ -25,6 +26,7 @@ _ECAPA_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"
 _ECAPA_SAVEDIR = Path(__file__).resolve().parent / "models" / "spkrec-ecapa-voxceleb"
 _TARGET_SR = 16000
 _MIN_SAMPLES = 1600  # 0.1 s at 16 kHz
+_ONNX_INPUT_SAMPLES = 32000  # ECAPA export input: 2 s of 16 kHz PCM
 _ZERO_NORM = 1e-8
 
 
@@ -40,8 +42,27 @@ class SpeakerVerifier:
 
     def __init__(self):
         self._classifier = None
+        self._onnx_session: ort.InferenceSession | None = None
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._infer_lock = threading.Lock()
+
+        # Prefer the bundled ONNX export. It is self-contained, does not make
+        # a network request, and is the same 192-dim ECAPA model used during
+        # enrolment. The previous SpeechBrain-only path could silently fall
+        # back to random mock embeddings when Docker's model volume was empty.
+        try:
+            self._onnx_session = ort.InferenceSession(
+                settings.ecapa_onnx_path,
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+            print("  [OK] ECAPA-TDNN ONNX model loaded")
+        except Exception as e:
+            print(f"  [WARN] Failed to load ECAPA ONNX: {e}. Trying SpeechBrain fallback.")
+
+        if self._onnx_session is not None:
+            self._models_loaded = True
+            return
+
         try:
             from speechbrain.inference.speaker import EncoderClassifier
             from speechbrain.utils.fetching import LocalStrategy
@@ -60,9 +81,6 @@ class SpeakerVerifier:
             self._classifier = None
 
         self._models_loaded = self._classifier is not None
-
-        # Deterministic RNG for mock mode
-        self._mock_rng = np.random.RandomState(123)
 
     # ------------------------------------------------------------------
     #  Embedding extraction
@@ -83,12 +101,29 @@ class SpeakerVerifier:
             (NaN/Inf/zero-norm) embeddings are rejected as an all-zero vector.
         """
         if not self._models_loaded:
-            emb = self._mock_rng.randn(self.EMBEDDING_DIM).astype(np.float32)
-            return self._l2_normalize(emb)
+            # A random vector creates a convincing but meaningless similarity
+            # score and can permanently poison an enrolled profile. Return an
+            # explicit invalid embedding instead; the enrolment endpoint will
+            # reject it and the caller is never mislabelled as an imposter.
+            print("  [WARN] Speaker verification model unavailable; no embedding produced.")
+            return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         audio_clean = self._preprocess_16k_mono(audio_chunk)
         if audio_clean is None:
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
+
+        if self._onnx_session is not None:
+            try:
+                onnx_audio = self._prepare_onnx_audio(audio_clean)
+                input_name = self._onnx_session.get_inputs()[0].name
+                with self._infer_lock:
+                    output = self._onnx_session.run(None, {input_name: onnx_audio})[0]
+                return self._finalize_embedding(np.asarray(output).reshape(-1))
+            except Exception as e:
+                # Never replace a real profile match with a random embedding.
+                # A zero vector produces an explicit verification failure.
+                print(f"  [WARN] ECAPA ONNX extraction error: {e}.")
+                return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         try:
             wavs = torch.from_numpy(audio_clean).unsqueeze(0).to(self._device)
@@ -240,6 +275,21 @@ class SpeakerVerifier:
             wav = padded
 
         return wav
+
+    @staticmethod
+    def _prepare_onnx_audio(wav: np.ndarray) -> np.ndarray:
+        """Match the fixed 2-second input contract of the exported ECAPA ONNX.
+
+        Live SIP speech is accumulated in 1.5–3 second windows, whereas the
+        checked-in export was traced at exactly 32,000 samples. Normalising the
+        window here prevents runtime shape failures after enough speech arrives.
+        """
+        if len(wav) >= _ONNX_INPUT_SAMPLES:
+            fixed = wav[-_ONNX_INPUT_SAMPLES:]
+        else:
+            fixed = np.zeros(_ONNX_INPUT_SAMPLES, dtype=np.float32)
+            fixed[: len(wav)] = wav
+        return fixed.reshape(1, _ONNX_INPUT_SAMPLES).astype(np.float32, copy=False)
 
     def _finalize_embedding(self, emb: np.ndarray) -> np.ndarray:
         """Keep the 192-d speaker vector; reject NaN/Inf/zero-norm; L2-normalise."""

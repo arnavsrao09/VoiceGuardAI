@@ -46,6 +46,7 @@ export interface ComponentScores {
 export interface LiveRiskData {
   score: number;
   level: string;
+  threat_category: string;
   chunk_index: number;
   should_alert: boolean;
   alert_reason: string | null;

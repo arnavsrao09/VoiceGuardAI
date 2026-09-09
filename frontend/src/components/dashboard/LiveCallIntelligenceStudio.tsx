@@ -743,14 +743,28 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
                     </div>
 
                     {asteriskStatus?.sip_server?.active_calls_count > 0 ? (
-                      <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-[11px]">
-                        <span className="text-white font-semibold flex items-center gap-2">
-                          <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                          Live Audio Stream Active
-                        </span>
-                        <span className="font-mono text-emerald-400 font-bold text-xs">
-                          {asteriskStatus?.sip_server?.active_calls?.[0]?.packet_count || 0} pkts
-                        </span>
+                      <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-[11px] space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-semibold flex items-center gap-2">
+                            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                            Live Audio Stream Active
+                          </span>
+                          <span className="font-mono text-emerald-400 font-bold text-xs">
+                            {asteriskStatus?.sip_server?.active_calls?.[0]?.packet_count || 0} pkts
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-emerald-200/80 font-mono">
+                          <span>
+                            MIC LEVEL {(Number(asteriskStatus?.sip_server?.active_calls?.[0]?.audio_rms || 0) * 100).toFixed(1)}%
+                          </span>
+                          <span>
+                            {asteriskStatus?.sip_server?.active_calls?.[0]?.payload_type === 0
+                              ? 'PCMU'
+                              : asteriskStatus?.sip_server?.active_calls?.[0]?.payload_type === 8
+                                ? 'PCMA'
+                                : 'CODEC PENDING'} · RTP decoded
+                          </span>
+                        </div>
                       </div>
                     ) : (
                       <p className="text-[10px] text-emerald-300/80 leading-relaxed">

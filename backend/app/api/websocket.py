@@ -306,6 +306,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     result["timestamp"] = datetime.now(timezone.utc).isoformat()
                     result["latency_ms"] = ml_result["latency_ms"]
                     result["speech_probability"] = round(speech_prob, 3)
+                    # Scores emitted while no trained ONNX detector is loaded
+                    # are development placeholders, never evidence about a
+                    # caller's voice. Make that explicit to every client.
+                    result["analysis_mode"] = (
+                        "trained_model" if pipeline.detector._models_loaded else "mock_model"
+                    )
                     result["profile_name"] = profile_name
                     result["context_risk"] = round(current_context_risk, 3)
 
