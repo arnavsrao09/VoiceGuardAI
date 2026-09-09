@@ -146,6 +146,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     session_max_alert_reason: str | None = None
     session_max_level: str = "LOW"
+    session_email_sent: bool = False
     stable_speaker_sim: float | None = None
     stable_speaker_verified = False
     speaker_ema_alpha = 0.4
@@ -329,23 +330,25 @@ async def websocket_endpoint(websocket: WebSocket):
                         if result["should_alert"] and result["alert_reason"]:
                             session_max_alert_reason = result["alert_reason"]
                             session_max_level = result["level"].upper()
-                            # Dispatch multi-channel Email, SMS, Webhook alert asynchronously
-                            asyncio.create_task(
-                                AlertNotifier.dispatch_alert(
-                                    session_id=session_id,
-                                    severity=session_max_level,
-                                    trigger_reason=result["alert_reason"],
-                                    risk_score=float(result["score"]),
-                                    organization_id=organization_id,
-                                    caller_id=caller_label,
-                                    context_data={
-                                        "location": location_param,
-                                        "amount": transaction_amount,
-                                        "transfer_type": transfer_type_param,
-                                        "caller_phone": caller_phone_param,
-                                    },
+                            if not session_email_sent:
+                                session_email_sent = True
+                                # Dispatch multi-channel Email, SMS, Webhook alert asynchronously (once per session)
+                                asyncio.create_task(
+                                    AlertNotifier.dispatch_alert(
+                                        session_id=session_id,
+                                        severity=session_max_level,
+                                        trigger_reason=result["alert_reason"],
+                                        risk_score=float(result["score"]),
+                                        organization_id=organization_id,
+                                        caller_id=caller_label,
+                                        context_data={
+                                            "location": location_param,
+                                            "amount": transaction_amount,
+                                            "transfer_type": transfer_type_param,
+                                            "caller_phone": caller_phone_param,
+                                        },
+                                    )
                                 )
-                            )
                             
                         await db.commit()
 

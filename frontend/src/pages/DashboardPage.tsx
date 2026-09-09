@@ -614,6 +614,8 @@ export default function DashboardPage() {
   const [countermeasureStatus, setCountermeasureStatus] = useState<string | null>(null);
   const [dbSessions, setDbSessions] = useState<SessionLogItem[]>([]);
   const sessionScoresCacheRef = useRef<Record<string, number>>({});
+  const dismissedSessionsRef = useRef<Set<string>>(new Set());
+  const poppedSessionsRef = useRef<Set<string>>(new Set());
 
   // Real-time telephony call state (Zoiper mobile/desktop, Asterisk PBX)
   const [telemetryRiskData, setTelemetryRiskData] = useState<LiveRiskData | null>(null);
@@ -678,12 +680,26 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Auto-open Security Interceptor Modal on HIGH / CRITICAL alerts (mic or phone call)
+  // Auto-open Security Interceptor Modal on HIGH / CRITICAL alerts (once per session; no re-popping if dismissed)
   useEffect(() => {
     const active = riskData || telemetryRiskData;
     if (active && (active.should_alert || active.level === 'CRITICAL' || active.level === 'HIGH')) {
-      setIsInterceptorOpen(true);
+      const sessId = active.session_id || 'active-session';
+      if (dismissedSessionsRef.current.has(sessId)) {
+        return;
+      }
+      if (!poppedSessionsRef.current.has(sessId)) {
+        poppedSessionsRef.current.add(sessId);
+        setIsInterceptorOpen(true);
+      }
     }
+  }, [riskData, telemetryRiskData]);
+
+  const handleCloseInterceptor = useCallback(() => {
+    const active = riskData || telemetryRiskData;
+    const sessId = active?.session_id || 'active-session';
+    dismissedSessionsRef.current.add(sessId);
+    setIsInterceptorOpen(false);
   }, [riskData, telemetryRiskData]);
 
   // Continuously record live scores in cache
@@ -1410,7 +1426,7 @@ export default function DashboardPage() {
       {/* Transaction Interceptor Security Modal */}
       <TransactionInterceptor
         isOpen={isInterceptorOpen}
-        onClose={() => setIsInterceptorOpen(false)}
+        onClose={handleCloseInterceptor}
         riskScore={currentScore}
         threatCategory={activeRiskData?.level === 'CRITICAL' ? 'VOICE_CLONE_IMPERSONATION' : 'SYNTHETIC_SPEAKER'}
         reason={activeRiskData?.alert_reason || 'AI voice synthesis artifacts detected on active call channel.'}

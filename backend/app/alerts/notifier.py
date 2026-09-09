@@ -31,6 +31,7 @@ class AlertNotifier:
         # Default internal enterprise webhook listener (simulated/configurable)
         "http://localhost:8000/api/v1/webhooks/listener"
     ]
+    _dispatched_email_sessions: set[str] = set()
 
     @classmethod
     def register_webhook(cls, url: str):
@@ -114,10 +115,20 @@ class AlertNotifier:
     @classmethod
     async def _send_email_alert(cls, payload: dict) -> bool:
         """Send HTML alert email via SMTP."""
+        session_id_str = str(payload.get("session_id", ""))
+        if session_id_str and session_id_str in cls._dispatched_email_sessions:
+            print(f"[NOTIFIER Email] Email alert already sent for session {session_id_str}. Skipping duplicate email.")
+            return True
+
         recipient = settings.alert_email_to or settings.smtp_user
         if not settings.smtp_host or not recipient or not settings.smtp_user:
             print("[NOTIFIER Email] SMTP not fully configured (SMTP_USER/ALERT_EMAIL_TO missing). Skipping email dispatch.")
             return False
+
+        if session_id_str:
+            cls._dispatched_email_sessions.add(session_id_str)
+            if len(cls._dispatched_email_sessions) > 5000:
+                cls._dispatched_email_sessions.clear()
 
         def _sync_send():
             try:
