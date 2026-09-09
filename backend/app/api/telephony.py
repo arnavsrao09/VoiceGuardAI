@@ -245,6 +245,42 @@ class AsteriskSimulateCallRequest(BaseModel):
     scenario: str = "deepfake_pressure"
     duration_seconds: int = 15
 
+
+class SIPProfileSelectionRequest(BaseModel):
+    """The enrolled speaker to verify for SIP calls that start next."""
+
+    profile_id: uuid.UUID | None = None
+
+
+@router.put("/sip/target-profile")
+async def set_sip_target_profile(body: SIPProfileSelectionRequest):
+    """Set or clear the speaker profile used by the next inbound SIP call.
+
+    A SIP call owns an internal WebSocket connection. Without this bridge, a
+    profile selected in the dashboard never reached that connection and every
+    call silently ran in unenrolled/general-monitoring mode.
+    """
+    from app.telephony.sip_server import sip_server_instance
+
+    if sip_server_instance is None:
+        raise HTTPException(status_code=503, detail="SIP gateway is not running")
+
+    profile_id = str(body.profile_id) if body.profile_id else None
+    if body.profile_id:
+        from app.db.database import AsyncSessionLocal
+        from app.db import crud
+
+        async with AsyncSessionLocal() as db:
+            profile = await crud.get_voice_profile(db, body.profile_id)
+        if profile is None or not profile.embedding:
+            raise HTTPException(status_code=404, detail="Selected speaker profile is unavailable")
+
+    sip_server_instance.set_target_profile(profile_id)
+    return {
+        "profile_id": profile_id,
+        "applies_to": "next inbound SIP call",
+    }
+
 @router.get("/asterisk/status")
 async def get_asterisk_status():
     """Return live Asterisk ARI bridge connection state and active calls."""
@@ -260,8 +296,15 @@ async def get_asterisk_status():
             sip_active_call_list.append({
                 "call_id": cid,
                 "caller_id": cinfo.get("caller_id"),
+                "profile_id": cinfo.get("profile_id"),
                 "start_time": cinfo["start_time"].isoformat() if "start_time" in cinfo else None,
                 "packet_count": rcv.packet_count if rcv else 0,
+                "invalid_rtp_packets": rcv.invalid_rtp_packets if rcv else 0,
+                "unsupported_payload_packets": rcv.unsupported_payload_packets if rcv else 0,
+                "payload_type": rcv.last_payload_type if rcv else None,
+                "audio_rms": round(rcv.last_rms, 5) if rcv else 0.0,
+                "audio_peak": round(rcv.last_peak, 5) if rcv else 0.0,
+                "last_packet_at": rcv.last_packet_at.isoformat() if rcv and rcv.last_packet_at else None,
                 "last_score": rcv.last_score if rcv else 0.0,
                 "speech_prob": rcv.last_speech_prob if rcv else 0.0,
                 "latest_result": rcv.latest_result if rcv else None,
@@ -278,6 +321,7 @@ async def get_asterisk_status():
             "local_ip": get_local_ip(),
             "port": 5060,
             "registered_clients": registered_clients,
+            "target_profile_id": sip_server_instance.target_profile_id if sip_server_instance else None,
             "active_calls_count": sip_active_calls,
             "active_calls": sip_active_call_list,
         },
@@ -356,4 +400,3 @@ def _is_private_ip(ip: str) -> bool:
         or ip == "localhost"
         or ip == "0.0.0.0"
     )
-

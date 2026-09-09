@@ -765,6 +765,18 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchProfiles, fetchSessions]);
 
+  // A browser microphone stream carries profile_id directly in its WebSocket
+  // URL. SIP media uses a separate server-side WebSocket, so explicitly pass
+  // the dashboard selection to the SIP gateway before the caller dials.
+  useEffect(() => {
+    apiFetch('/telephony/sip/target-profile', {
+      method: 'PUT',
+      body: JSON.stringify({ profile_id: selectedProfileId || null }),
+    }).catch((err) => {
+      console.warn('[Dashboard] Could not set SIP target profile:', err);
+    });
+  }, [selectedProfileId]);
+
   // Fast staggered fetch when monitoring stops
   const handleStopMonitoring = useCallback(() => {
     if (riskData?.session_id) {
@@ -1008,8 +1020,8 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-base font-bold text-[var(--color-sentinel-text)] truncate">
-                {riskData?.profile_name 
-                  ? riskData.profile_name 
+                {activeRiskData?.profile_name
+                  ? activeRiskData.profile_name
                   : (selectedProfileId ? 'Selected Profile' : 'Unenrolled Caller')}
               </p>
               <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 font-mono">
@@ -1428,8 +1440,8 @@ export default function DashboardPage() {
         isOpen={isInterceptorOpen}
         onClose={handleCloseInterceptor}
         riskScore={currentScore}
-        threatCategory={activeRiskData?.level === 'CRITICAL' ? 'VOICE_CLONE_IMPERSONATION' : 'SYNTHETIC_SPEAKER'}
-        reason={activeRiskData?.alert_reason || 'AI voice synthesis artifacts detected on active call channel.'}
+        threatCategory={activeRiskData?.threat_category || 'UNKNOWN'}
+        reason={activeRiskData?.alert_reason || 'Voice-risk analysis requires additional speech evidence.'}
         sessionId={activeRiskData?.session_id}
         callerId={activeRiskData?.profile_name ? `${selectedPhone} (${activeRiskData.profile_name})` : (telephonyCaller || selectedPhone)}
         callerPhone={selectedPhone}

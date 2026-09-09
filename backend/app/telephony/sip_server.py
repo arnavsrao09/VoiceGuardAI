@@ -19,6 +19,7 @@ import logging
 import re
 import socket
 import struct
+from urllib.parse import urlencode
 from datetime import datetime, timezone
 from typing import Tuple, Any
 
@@ -78,6 +79,12 @@ class RTPMediaReceiver(asyncio.DatagramProtocol):
         self.ws = None
         self.transport = None
         self.packet_count = 0
+        self.invalid_rtp_packets = 0
+        self.unsupported_payload_packets = 0
+        self.last_payload_type: int | None = None
+        self.last_rms: float = 0.0
+        self.last_peak: float = 0.0
+        self.last_packet_at: datetime | None = None
         self.is_connected = False
         self.latest_result: dict[str, Any] | None = None
         self.last_score: float = 0.0
@@ -148,17 +155,13 @@ class RTPMediaReceiver(asyncio.DatagramProtocol):
         asyncio.create_task(self.connect_ws())
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        if len(data) < 12:
-            return  # Invalid RTP packet
-
-        # RTP header: 12 bytes
-        # Byte 1: payload type (0 = PCMU, 8 = PCMA)
-        payload_type = data[1] & 0x7F
-        payload = data[12:]
-        if not payload:
+        parsed = self._parse_rtp_payload(data)
+        if parsed is None:
+            self.invalid_rtp_packets += 1
             return
-
-        self.packet_count += 1
+        payload_type, payload = parsed
+        self.last_payload_type = payload_type
+        self.last_packet_at = datetime.now(timezone.utc)
 
         # Decode mu-law or A-law to 16-bit linear PCM
         if payload_type == 0:  # PCMU 8kHz
@@ -166,7 +169,10 @@ class RTPMediaReceiver(asyncio.DatagramProtocol):
         elif payload_type == 8:  # PCMA 8kHz (A-law)
             pcm8k = [_ALAW_TABLE[b] for b in payload]
         else:
+            self.unsupported_payload_packets += 1
             return  # Ignore non-voice packets (e.g. DTMF)
+
+        self.packet_count += 1
 
         # 2x linear interpolation upsampling from 8kHz to 16kHz
         pcm16k = []
@@ -176,6 +182,13 @@ class RTPMediaReceiver(asyncio.DatagramProtocol):
             s1 = pcm8k[i + 1] if i + 1 < n else s0
             pcm16k.extend([s0, (s0 + s1) // 2])
         pcm_bytes = struct.pack(f"<{len(pcm16k)}h", *pcm16k)
+        if pcm16k:
+            # Input-level telemetry proves that the RTP stream carries actual
+            # microphone signal independently of the spoof classifier.
+            self.last_peak = max(abs(sample) for sample in pcm16k) / 32768.0
+            self.last_rms = (
+                sum(sample * sample for sample in pcm16k) / len(pcm16k)
+            ) ** 0.5 / 32768.0
 
         # Accumulate PCM frames into buffer and queue when >= 1600 samples (100ms = 3200 bytes)
         self.pcm_buffer.extend(pcm_bytes)
@@ -194,6 +207,39 @@ class RTPMediaReceiver(asyncio.DatagramProtocol):
                     self.audio_queue.put_nowait(chunk)
                 except Exception:
                     pass
+
+    @staticmethod
+    def _parse_rtp_payload(data: bytes) -> tuple[int, bytes] | None:
+        """Return RTP payload while honoring CSRC, extension, and padding fields.
+
+        The old fixed ``data[12:]`` offset treated optional RTP header bytes as
+        G.711 samples. Zoiper and many mobile stacks use header extensions, so
+        that produced plausible-looking but corrupted audio.
+        """
+        if len(data) < 12 or (data[0] >> 6) != 2:
+            return None
+        has_padding = bool(data[0] & 0x20)
+        has_extension = bool(data[0] & 0x10)
+        csrc_count = data[0] & 0x0F
+        offset = 12 + csrc_count * 4
+        if offset > len(data):
+            return None
+        if has_extension:
+            if offset + 4 > len(data):
+                return None
+            extension_words = int.from_bytes(data[offset + 2 : offset + 4], "big")
+            offset += 4 + extension_words * 4
+            if offset > len(data):
+                return None
+        end = len(data)
+        if has_padding:
+            padding_size = data[-1]
+            if padding_size == 0 or padding_size > end - offset:
+                return None
+            end -= padding_size
+        if offset >= end:
+            return None
+        return data[1] & 0x7F, data[offset:end]
 
     def stop(self):
         self.is_connected = False
@@ -224,6 +270,13 @@ class VoiceGuardSIPServer(asyncio.DatagramProtocol):
         self.active_calls: dict[str, dict[str, Any]] = {}
         self.rtp_receiver: RTPMediaReceiver | None = None
         self.rtp_transport = None
+        # Set by the dashboard before a call begins. Capture it per call so a
+        # later UI selection cannot change an in-progress verification.
+        self.target_profile_id: str | None = None
+
+    def set_target_profile(self, profile_id: str | None) -> None:
+        """Select the enrolled speaker profile for the next SIP call."""
+        self.target_profile_id = profile_id
 
     def connection_made(self, transport: asyncio.DatagramTransport):
         self.transport = transport
@@ -308,6 +361,7 @@ class VoiceGuardSIPServer(asyncio.DatagramProtocol):
 
         caller_match = re.search(r"sip:([a-zA-Z0-9_\-+]+)@", from_hdr)
         caller_id = caller_match.group(1) if caller_match else "Zoiper-Mobile"
+        profile_id = self.target_profile_id
 
         # Determine media IP: if client connected from loopback, use 127.0.0.1, else local IP
         media_ip = "127.0.0.1" if addr[0] in ("127.0.0.1", "localhost") else self.local_ip
@@ -325,8 +379,25 @@ class VoiceGuardSIPServer(asyncio.DatagramProtocol):
         if self.transport:
             self.transport.sendto(ringing.encode("utf-8"), addr)
 
+        # Register the call before starting the listener. The listener updates
+        # this same record once its socket is live, avoiding a stale None
+        # receiver in the dashboard status endpoint.
+        self.active_calls[call_id] = {
+            "caller_id": caller_id,
+            "addr": addr,
+            "start_time": datetime.now(timezone.utc),
+            "rtp_receiver": None,
+            "profile_id": profile_id,
+        }
+
         # 2. Start RTP Media Receiver on port 10000
-        asyncio.create_task(self._start_rtp_listener(caller_id=caller_id))
+        asyncio.create_task(
+            self._start_rtp_listener(
+                caller_id=caller_id,
+                call_id=call_id,
+                profile_id=profile_id,
+            )
+        )
 
         # 3. Send 200 OK with SDP pointing to media IP on port 10000
         sdp = (
@@ -358,31 +429,34 @@ class VoiceGuardSIPServer(asyncio.DatagramProtocol):
             print(f"[SIP] >>> Call connected with client {caller_id} ({addr[0]}:{addr[1]})!")
             print(f"[SIP] >>> Audio stream routed to VoiceGuard ML pipeline via UDP 10000 (media IP: {media_ip})")
 
-        self.active_calls[call_id] = {
-            "caller_id": caller_id,
-            "addr": addr,
-            "start_time": datetime.now(timezone.utc),
-            "rtp_receiver": self.rtp_receiver,
-        }
-
-    async def _start_rtp_listener(self, caller_id: str = "Live Mobile Caller"):
+    async def _start_rtp_listener(
+        self,
+        caller_id: str = "Live Mobile Caller",
+        call_id: str | None = None,
+        profile_id: str | None = None,
+    ):
         """Bind UDP 10000 for receiving mobile audio."""
         if self.rtp_receiver:
             self.rtp_receiver.stop()
         loop = asyncio.get_running_loop()
-        ws_url = (
-            f"ws://localhost:8000/ws/stream?session_ref=sip-{caller_id}"
-            f"&caller_phone={caller_id}"
-            f"&amount=0.0"
-            f"&transfer_type=Inbound%20SIP%20Call"
-            f"&location=VoIP%20PBX%20Trunk"
-        )
+        query = {
+            "session_ref": f"sip-{caller_id}",
+            "caller_phone": caller_id,
+            "amount": "0.0",
+            "transfer_type": "Inbound SIP Call",
+            "location": "VoIP PBX Trunk",
+        }
+        if profile_id:
+            query["profile_id"] = profile_id
+        ws_url = f"ws://localhost:8000/ws/stream?{urlencode(query)}"
         self.rtp_receiver = RTPMediaReceiver(ws_url=ws_url)
         try:
             self.rtp_transport, _ = await loop.create_datagram_endpoint(
                 lambda: self.rtp_receiver,
                 local_addr=("0.0.0.0", 10000),
             )
+            if call_id in self.active_calls:
+                self.active_calls[call_id]["rtp_receiver"] = self.rtp_receiver
             print(f"[RTP] Successfully bound UDP 10000 for mobile audio stream ({caller_id}).")
         except Exception as e:
             print(f"[RTP] Could not bind UDP 10000 (might be already active): {e}")

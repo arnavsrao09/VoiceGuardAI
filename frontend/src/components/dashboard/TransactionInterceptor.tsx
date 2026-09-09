@@ -37,6 +37,14 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
 
   if (!isOpen) return null;
 
+  const isIdentityMismatch = threatCategory === 'GENUINE_DIFFERENT_SPEAKER';
+  const headline = isIdentityMismatch
+    ? 'Identity Verification Failed'
+    : 'Impersonation Threat Intercepted';
+  const scoreLabel = isIdentityMismatch
+    ? 'Identity Mismatch Risk:'
+    : 'Synthetic Spoof Risk:';
+
   const handleAction = async (actionType: string) => {
     setIsSubmitting(true);
     try {
@@ -85,7 +93,7 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
                   AUTOMATED SECURITY INTERCEPTOR
                 </span>
                 <h2 className="text-xl font-extrabold text-white">
-                  Impersonation Threat Intercepted
+                  {headline}
                 </h2>
               </div>
             </div>
@@ -110,7 +118,7 @@ export const TransactionInterceptor: React.FC<TransactionInterceptorProps> = ({
               </div>
             )}
             <div className="flex justify-between items-center mb-2">
-              <span className="text-gray-300 font-medium">Synthetic Spoof Risk:</span>
+              <span className="text-gray-300 font-medium">{scoreLabel}</span>
               <span className="text-lg font-black text-red-400">
                 {(riskScore * 100).toFixed(1)}%
               </span>
