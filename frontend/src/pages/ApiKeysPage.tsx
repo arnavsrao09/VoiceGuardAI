@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiFetch, getAuthToken } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import {
   Key, Plus, Trash2, Copy, Check, Shield, Zap, Radio, Webhook,
-  Code2, Server, Phone, ChevronRight, ExternalLink, Eye, EyeOff,
-  Clock, CheckCircle2, XCircle, AlertTriangle, BookOpen
+  Code2, Server, Phone, Eye, EyeOff, Clock, CheckCircle2, XCircle, BookOpen
 } from 'lucide-react';
 
 interface ApiKey {
@@ -190,21 +189,70 @@ export default function ApiKeysPage() {
   const activeTab = CODE_TABS.find(t => t.id === activeCodeTab) || CODE_TABS[0];
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
-      <div className="max-w-[1440px] mx-auto">
+    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto">
 
-        {/* ────── Page Header ────── */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10">
+      {/* ────── Page Header ────── */}
+      <div className="mb-10">
+        <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] flex items-center justify-center shadow-lg" style={{ boxShadow: '0 4px 20px rgba(0,229,200,0.15)' }}>
+            <Key className="w-5 h-5 text-white" />
+          </div>
+          API Keys & Integration
+        </h1>
+        <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1.5 max-w-xl">
+          Manage authentication keys for your organisation's B2B integrations. Each key grants access to real-time audio analysis, automated workflows, and webhook event subscriptions.
+        </p>
+      </div>
+
+      {/* ────── 1. What Your API Key Unlocks Section (First) ────── */}
+      <div className="mb-10">
+        <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 mb-4">
+          <BookOpen className="w-4 h-4 text-[var(--color-accent-purple)]" />
+          What Your API Key Unlocks
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {API_CAPABILITIES.map((cap, idx) => {
+            const Icon = cap.icon;
+            return (
+              <motion.div
+                key={cap.title}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="rounded-2xl border p-4 transition-all hover:border-opacity-60 flex flex-col justify-between group"
+                style={{ borderColor: cap.borderColor, background: cap.bgColor }}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cap.color}15` }}>
+                    <Icon className="w-[18px] h-[18px]" style={{ color: cap.color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-[0.8125rem] font-bold text-[var(--color-sentinel-text)] mb-1">{cap.title}</h4>
+                    <p className="text-[11px] text-[var(--color-sentinel-text-muted)] leading-relaxed">{cap.description}</p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-white/5">
+                  <code className="text-[10px] font-mono px-2 py-1 rounded-md bg-[#0f111a] border border-[var(--color-sentinel-border)] inline-block truncate max-w-full" style={{ color: cap.color }}>
+                    {cap.endpoint}
+                  </code>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ────── 2. API Keys Section (Below Unlocks Section) ────── */}
+      <div className="mb-10 space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-[var(--color-sentinel-border)]">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] flex items-center justify-center shadow-lg" style={{ boxShadow: '0 4px 20px rgba(0,229,200,0.15)' }}>
-                <Key className="w-5 h-5 text-white" />
-              </div>
-              API Keys & Integration
-            </h1>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1.5 max-w-xl">
-              Manage authentication keys for your organisation's B2B integrations. Each key grants access to real-time audio analysis, automated workflows, and webhook event subscriptions.
-            </p>
+            <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
+              <Key className="w-4 h-4 text-[var(--color-accent-primary)]" />
+              Active API Keys
+            </h2>
+            <span className="text-xs text-[var(--color-sentinel-text-dim)] font-mono mt-0.5 block">
+              {keys.filter(k => k.is_active).length} active · {keys.filter(k => !k.is_active).length} revoked
+            </span>
           </div>
           <button
             onClick={handleCreateKey}
@@ -216,14 +264,14 @@ export default function ApiKeysPage() {
           </button>
         </div>
 
-        {/* ────── New Key Alert ────── */}
+        {/* New Key Alert */}
         <AnimatePresence>
           {newKey && (
             <motion.div
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
-              className="mb-8 p-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm"
+              className="p-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm"
             >
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
@@ -247,133 +295,82 @@ export default function ApiKeysPage() {
           )}
         </AnimatePresence>
 
-        {/* ────── Two-Column Layout ────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-10">
-
-          {/* Left: Key Management (3 cols) */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
-                <Key className="w-4 h-4 text-[var(--color-accent-primary)]" />
-                Active Keys
-              </h2>
-              <span className="text-xs text-[var(--color-sentinel-text-dim)] font-mono">
-                {keys.filter(k => k.is_active).length} active · {keys.filter(k => !k.is_active).length} revoked
-              </span>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-16 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
-                <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : keys.length === 0 ? (
-              <div className="text-center py-16 rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
-                <Key className="w-10 h-10 text-[var(--color-sentinel-text-dim)] mx-auto mb-3" />
-                <h3 className="text-sm font-bold text-[var(--color-sentinel-text)] mb-1">No API Keys Yet</h3>
-                <p className="text-xs text-[var(--color-sentinel-text-muted)]">Generate your first key to get started with the API.</p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {keys.map((key, idx) => (
-                  <motion.div
-                    key={key.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className={`rounded-2xl border p-4 transition-all ${
-                      key.is_active
-                        ? 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] hover:border-[var(--color-sentinel-text-dim)]'
-                        : 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] opacity-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          key.is_active ? 'bg-[rgba(0,229,200,0.1)]' : 'bg-[rgba(239,68,68,0.1)]'
-                        }`}>
-                          <Key className={`w-4 h-4 ${key.is_active ? 'text-[var(--color-accent-primary)]' : 'text-red-400'}`} />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <code className="text-sm font-mono text-[var(--color-sentinel-text)] font-semibold truncate">
-                              {visibleKeys.has(key.id) ? key.prefix + '••••••••••••' : key.prefix + '••••'}
-                            </code>
-                            <button
-                              onClick={() => toggleKeyVisibility(key.id)}
-                              className="p-1 rounded-md text-[var(--color-sentinel-text-dim)] hover:text-[var(--color-sentinel-text)] transition-colors"
-                            >
-                              {visibleKeys.has(key.id) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              key.is_active
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}>
-                              {key.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                              {key.is_active ? 'ACTIVE' : 'REVOKED'}
-                            </span>
-                            <span className="text-[11px] text-[var(--color-sentinel-text-dim)] flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {new Date(key.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {key.is_active && (
-                        <button
-                          onClick={() => handleRevokeKey(key.id)}
-                          className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/10 hover:border-red-500/40 transition-all"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Revoke
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
+        {/* Key List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
+            <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
           </div>
-
-          {/* Right: What Your Key Unlocks (2 cols) */}
-          <div className="lg:col-span-2">
-            <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-[var(--color-accent-purple)]" />
-              What Your API Key Unlocks
-            </h2>
-            <div className="flex flex-col gap-3">
-              {API_CAPABILITIES.map((cap, idx) => {
-                const Icon = cap.icon;
-                return (
-                  <motion.div
-                    key={cap.title}
-                    initial={{ opacity: 0, x: 12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 + idx * 0.07 }}
-                    className="rounded-2xl border p-4 transition-all hover:border-opacity-60 group"
-                    style={{ borderColor: cap.borderColor, background: cap.bgColor }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cap.color}15` }}>
-                        <Icon className="w-[18px] h-[18px]" style={{ color: cap.color }} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-[0.8125rem] font-bold text-[var(--color-sentinel-text)] mb-1">{cap.title}</h4>
-                        <p className="text-[11px] text-[var(--color-sentinel-text-muted)] leading-relaxed mb-2">{cap.description}</p>
-                        <code className="text-[10px] font-mono px-2 py-1 rounded-md bg-[#0f111a] border border-[var(--color-sentinel-border)]" style={{ color: cap.color }}>
-                          {cap.endpoint}
+        ) : keys.length === 0 ? (
+          <div className="text-center py-16 rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]">
+            <Key className="w-10 h-10 text-[var(--color-sentinel-text-dim)] mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-[var(--color-sentinel-text)] mb-1">No API Keys Yet</h3>
+            <p className="text-xs text-[var(--color-sentinel-text-muted)]">Generate your first key to get started with the API.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {keys.map((key, idx) => (
+              <motion.div
+                key={key.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className={`rounded-2xl border p-4 transition-all ${
+                  key.is_active
+                    ? 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] hover:border-[var(--color-sentinel-text-dim)]'
+                    : 'border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] opacity-50'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      key.is_active ? 'bg-[rgba(0,229,200,0.1)]' : 'bg-[rgba(239,68,68,0.1)]'
+                    }`}>
+                      <Key className={`w-4 h-4 ${key.is_active ? 'text-[var(--color-accent-primary)]' : 'text-red-400'}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono text-[var(--color-sentinel-text)] font-semibold truncate">
+                          {visibleKeys.has(key.id) ? key.prefix + '••••••••••••' : key.prefix + '••••'}
                         </code>
+                        <button
+                          onClick={() => toggleKeyVisibility(key.id)}
+                          className="p-1 rounded-md text-[var(--color-sentinel-text-dim)] hover:text-[var(--color-sentinel-text)] transition-colors"
+                        >
+                          {visibleKeys.has(key.id) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          key.is_active
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        }`}>
+                          {key.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                          {key.is_active ? 'ACTIVE' : 'REVOKED'}
+                        </span>
+                        <span className="text-[11px] text-[var(--color-sentinel-text-dim)] flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(key.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
                       </div>
                     </div>
-                  </motion.div>
-                );
-              })}
-            </div>
+                  </div>
+
+                  {key.is_active && (
+                    <button
+                      onClick={() => handleRevokeKey(key.id)}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/20 text-red-400 text-xs font-semibold hover:bg-red-500/10 hover:border-red-500/40 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            ))}
           </div>
-        </div>
+        )}
+      </div>
 
         {/* ────── Developer Integration Section ────── */}
         <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] overflow-hidden">
@@ -471,7 +468,6 @@ export default function ApiKeysPage() {
             </pre>
           </div>
         </div>
-      </div>
     </div>
   );
 }
