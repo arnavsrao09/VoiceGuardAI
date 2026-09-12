@@ -30,8 +30,73 @@ from app.db import crud
 from app.db.models import DetectionSession
 from app.api.deps import SECRET_KEY, ALGORITHM
 from app.config import settings
+from app.alerts.notifier import AlertNotifier
 
 router = APIRouter()
+
+
+class TelemetryHub:
+    """Central broadcast hub: fans out live analysis from SIP softphone & mic to dashboard UI."""
+
+    def __init__(self):
+        self._listeners: set[WebSocket] = set()
+
+    def register(self, ws: WebSocket):
+        self._listeners.add(ws)
+
+    def unregister(self, ws: WebSocket):
+        self._listeners.discard(ws)
+
+    async def broadcast(self, data: dict):
+        dead = []
+        for ws in self._listeners:
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self._listeners.discard(ws)
+
+telemetry_hub = TelemetryHub()
+
+
+@router.websocket("/ws/telemetry")
+async def telemetry_endpoint(websocket: WebSocket):
+    """Broadcast hub for dashboard: receives all live risk events from SIP, softphone, and mic."""
+    await websocket.accept()
+    telemetry_hub.register(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        telemetry_hub.unregister(websocket)
+
+
+def calculate_context_risk(amount: float, transfer_type: str, location: str) -> float:
+    """Calculate contextual transaction threat modifier."""
+    risk = 0.0
+    if amount >= 100000.0:
+        risk += 0.20
+    elif amount >= 50000.0:
+        risk += 0.12
+    elif amount >= 10000.0:
+        risk += 0.05
+
+    tt_lower = (transfer_type or "").lower()
+    if any(k in tt_lower for k in ["wire", "crypto", "swift", "urgent", "instant"]):
+        risk += 0.10
+    elif "ach" in tt_lower or "internal" in tt_lower:
+        risk += 0.03
+
+    loc_lower = (location or "").lower()
+    if any(k in loc_lower for k in ["vpn", "tor", "proxy", "anonymous", "unknown"]):
+        risk += 0.15
+    elif "local" not in loc_lower and "internal" not in loc_lower:
+        risk += 0.05
+
+    return min(0.40, risk)
 
 
 @router.websocket("/ws/stream")
@@ -48,6 +113,15 @@ async def websocket_endpoint(websocket: WebSocket):
     query_params = websocket.query_params
     profile_id_param = query_params.get("profile_id")
     token_param = query_params.get("token")
+    location_param = query_params.get("location", "Mumbai, MH (IN)")
+    caller_phone_param = query_params.get("caller_phone")
+    amount_param_raw = query_params.get("amount", "50000.0")
+    transfer_type_param = query_params.get("transfer_type", "High-Value Wire Transfer")
+
+    try:
+        transaction_amount = float(amount_param_raw)
+    except ValueError:
+        transaction_amount = 50000.0
 
     # ── Resolve organization_id from JWT token ────────────────────────
     organization_id: uuid.UUID | None = None
@@ -72,6 +146,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     session_max_alert_reason: str | None = None
     session_max_level: str = "LOW"
+    session_email_sent: bool = False
     stable_speaker_sim: float | None = None
     stable_speaker_verified = False
     speaker_ema_alpha = 0.4
@@ -98,13 +173,24 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             print(f"[WS] Failed to load profile {profile_id_param}: {e}")
 
-    # Create session in DB with organization_id
-    caller_label = f"Stream ({profile_name})" if profile_name else "Live Stream"
+    # Create session in DB with organization_id and contextual metadata
+    caller_label = (
+        f"{caller_phone_param} ({profile_name})" if (caller_phone_param and profile_name)
+        else (caller_phone_param or (f"Stream ({profile_name})" if profile_name else "Live Stream"))
+    )
     async with AsyncSessionLocal() as db:
-        db_session = await crud.create_detection_session(db, caller_id=caller_label, organization_id=organization_id)
+        db_session = await crud.create_detection_session(
+            db=db,
+            caller_id=caller_label,
+            organization_id=organization_id,
+            caller_location=location_param,
+            transaction_amount=transaction_amount,
+            transfer_type=transfer_type_param,
+            contextual_notes=f"Caller Phone: {caller_phone_param}" if caller_phone_param else None,
+        )
         session_id = db_session.session_id
 
-    print(f"[WS] Session {session_id} — client connected (Profile: {profile_name or 'None'})")
+    print(f"[WS] Session {session_id} — client connected (Profile: {profile_name or 'None'}, Location: {location_param}, Amount: ${transaction_amount})")
 
     try:
         while True:
@@ -195,12 +281,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         ml_result["speaker"]["similarity"] = 0.0
                         ml_result["speaker"]["is_verified"] = False
 
+                    # Contextual threat modifier based on transaction amount, transfer type, and location
+                    current_context_risk = calculate_context_risk(transaction_amount, transfer_type_param, location_param)
+
                     # Compute risk score
                     result = risk_scorer.compute_score(
                         deepfake_prob=ml_result["deepfake"]["spoof_probability"],
                         speaker_match=ml_result["speaker"]["similarity"],
                         prosody_anomaly=ml_result["prosody"]["prosody_anomaly_score"],
                         speaker_drift=session_speaker_drift,
+                        context_risk=current_context_risk,
                         deepfake_confidence=ml_result["deepfake"]["confidence"],
                         has_enrollment=(
                             enrollment_embedding is not None
@@ -216,7 +306,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     result["timestamp"] = datetime.now(timezone.utc).isoformat()
                     result["latency_ms"] = ml_result["latency_ms"]
                     result["speech_probability"] = round(speech_prob, 3)
+                    # Scores emitted while no trained ONNX detector is loaded
+                    # are development placeholders, never evidence about a
+                    # caller's voice. Make that explicit to every client.
+                    result["analysis_mode"] = (
+                        "trained_model" if pipeline.detector._models_loaded else "mock_model"
+                    )
                     result["profile_name"] = profile_name
+                    result["context_risk"] = round(current_context_risk, 3)
 
                     # Include per-model detail
                     result["model_detail"] = {
@@ -239,15 +336,76 @@ async def websocket_endpoint(websocket: WebSocket):
                         if result["should_alert"] and result["alert_reason"]:
                             session_max_alert_reason = result["alert_reason"]
                             session_max_level = result["level"].upper()
+                            if not session_email_sent:
+                                session_email_sent = True
+                                # Dispatch multi-channel Email, SMS, Webhook alert asynchronously (once per session)
+                                asyncio.create_task(
+                                    AlertNotifier.dispatch_alert(
+                                        session_id=session_id,
+                                        severity=session_max_level,
+                                        trigger_reason=result["alert_reason"],
+                                        risk_score=float(result["score"]),
+                                        organization_id=organization_id,
+                                        caller_id=caller_label,
+                                        context_data={
+                                            "location": location_param,
+                                            "amount": transaction_amount,
+                                            "transfer_type": transfer_type_param,
+                                            "caller_phone": caller_phone_param,
+                                        },
+                                    )
+                                )
                             
                         await db.commit()
 
                     await websocket.send_json(result)
+                    asyncio.create_task(telemetry_hub.broadcast(result))
 
-            # ── Handle JSON text messages (config, enrollment, etc.) ──
+            # ── Handle JSON text messages (dynamic metadata updates, commands) ──
             elif "text" in data and data["text"]:
-                # Reserved for future commands (e.g. set enrollment)
-                pass
+                try:
+                    import json
+                    ctrl = json.loads(data["text"])
+                    if ctrl.get("type") == "update_metadata":
+                        if "amount" in ctrl and ctrl["amount"] is not None:
+                            try:
+                                transaction_amount = float(ctrl["amount"])
+                            except (ValueError, TypeError):
+                                pass
+                        if "location" in ctrl and ctrl["location"]:
+                            location_param = str(ctrl["location"])
+                        if "transfer_type" in ctrl and ctrl["transfer_type"]:
+                            transfer_type_param = str(ctrl["transfer_type"])
+                        if "caller_phone" in ctrl and ctrl["caller_phone"]:
+                            caller_phone_param = str(ctrl["caller_phone"])
+                            caller_label = f"{caller_phone_param} ({profile_name})" if profile_name else caller_phone_param
+                        
+                        # Persist updated metadata to DB session
+                        async with AsyncSessionLocal() as db:
+                            stmt = select(DetectionSession).where(DetectionSession.session_id == session_id)
+                            res = await db.execute(stmt)
+                            sess = res.scalar_one_or_none()
+                            if sess:
+                                sess.transaction_amount = transaction_amount
+                                sess.caller_location = location_param
+                                sess.transfer_type = transfer_type_param
+                                sess.caller_id = caller_label
+                                if caller_phone_param:
+                                    sess.contextual_notes = f"Caller Phone: {caller_phone_param}"
+                                await db.commit()
+
+                        # Return ACK to WebSocket client
+                        await websocket.send_json({
+                            "type": "metadata_updated",
+                            "session_id": str(session_id),
+                            "amount": transaction_amount,
+                            "location": location_param,
+                            "transfer_type": transfer_type_param,
+                            "caller_phone": caller_phone_param,
+                            "caller_id": caller_label,
+                        })
+                except Exception as ex:
+                    print(f"[WS] Error processing text control frame: {ex}")
 
     except WebSocketDisconnect:
         print(f"[WS] Session {session_id} — client disconnected")
@@ -282,4 +440,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             risk_score=final_score,
                             organization_id=organization_id
                         )
-                await db.commit()
+                    await db.commit()
+
+        asyncio.create_task(
+            telemetry_hub.broadcast({
+                "type": "session_ended",
+                "session_id": str(session_id),
+            })
+        )

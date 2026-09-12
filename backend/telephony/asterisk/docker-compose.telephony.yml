@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: voiceguard-asterisk
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./ari.conf:/etc/asterisk/ari.conf:ro
+      - ./http.conf:/etc/asterisk/http.conf:ro
+      - ./rtp.conf:/etc/asterisk/rtp.conf:ro
+    environment:
+      - ASTERISK_UID=1000
+      - ASTERISK_GID=1000
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

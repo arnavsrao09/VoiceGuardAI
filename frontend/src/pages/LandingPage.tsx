@@ -632,7 +632,7 @@ const features = [
   {
     icon: Globe,
     title: '128 Languages',
-    description: 'Wav2Vec2 XLS-R backbone with native Hindi, Tamil, Telugu, Bengali support. Handles code-switching and telephony codecs.',
+    description: 'Wav2Vec2 XLS-R backbone with native Kannada, Hindi, Tamil, Telugu, Bengali support. Handles code-switching and telephony codecs.',
     color: 'var(--color-accent-primary)',
   },
   {

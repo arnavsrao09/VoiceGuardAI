@@ -46,11 +46,13 @@ export interface ComponentScores {
 export interface LiveRiskData {
   score: number;
   level: string;
+  threat_category: string;
   chunk_index: number;
   should_alert: boolean;
   alert_reason: string | null;
   has_enrollment: boolean;
   profile_name?: string | null;
+  context_risk?: number;
   raw_components: ComponentScores;
   session_id: string;
   timestamp: string;
@@ -136,14 +138,34 @@ export function useAudioStreamer() {
     }
   }, []);
 
-  const startMonitoring = useCallback(async (file?: File, profileId?: string) => {
+  const startMonitoring = useCallback(async (
+    file?: File,
+    profileId?: string,
+    context?: { location?: string; amount?: number; transferType?: string; callerPhone?: string }
+  ) => {
     setError(null);
     setRecordingTime(0);
     setGraceCountdown(null);
 
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     if (graceTimerRef.current) {
       clearInterval(graceTimerRef.current);
       graceTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
+    if (processorRef.current) {
+      try { processorRef.current.disconnect(); } catch {}
+      processorRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch {}
+      audioContextRef.current = null;
     }
 
     try {
@@ -151,6 +173,10 @@ export function useAudioStreamer() {
       const params = new URLSearchParams();
       if (profileId) params.append('profile_id', profileId);
       if (token) params.append('token', token);
+      if (context?.location) params.append('location', context.location);
+      if (context?.amount) params.append('amount', context.amount.toString());
+      if (context?.transferType) params.append('transfer_type', context.transferType);
+      if (context?.callerPhone) params.append('caller_phone', context.callerPhone);
       
       const wsUrl = `ws://localhost:8000/ws/stream?${params.toString()}`;
       const ws = new WebSocket(wsUrl);
@@ -163,7 +189,12 @@ export function useAudioStreamer() {
 
       ws.onmessage = (event) => {
         try {
-          const data: LiveRiskData = JSON.parse(event.data);
+          const raw = JSON.parse(event.data);
+          if (raw.type === 'metadata_updated') {
+            console.log('[AudioStreamer] Dynamic metadata ACK received:', raw);
+            return;
+          }
+          const data: LiveRiskData = raw;
           setRiskData(data);
           
           // Append to timeline
@@ -298,6 +329,9 @@ export function useAudioStreamer() {
       setIsMonitoring(true);
 
       // Start timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
       timerRef.current = window.setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
@@ -314,6 +348,20 @@ export function useAudioStreamer() {
     };
   }, [stopMonitoring]);
 
+  const updateMetadata = useCallback((metadata: {
+    location?: string;
+    amount?: number;
+    transfer_type?: string;
+    caller_phone?: string;
+  }) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_metadata',
+        ...metadata,
+      }));
+    }
+  }, []);
+
   return {
     isMonitoring,
     isConnected,
@@ -326,5 +374,6 @@ export function useAudioStreamer() {
     error,
     startMonitoring,
     stopMonitoring,
+    updateMetadata,
   };
 }

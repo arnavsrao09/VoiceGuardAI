@@ -21,6 +21,27 @@ class Settings(BaseSettings):
     deepfake_threshold: float = 0.6
     speaker_verification_threshold: float = 0.72
     
+    # Multi-Channel Alerting Settings (Email & SMS)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    alert_email_from: str = "alerts@voiceguard.ai"
+    alert_email_to: str = ""
+
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
+    alert_sms_to: str = ""
+
+    # Privacy & Retention Defaults
+    default_session_ttl_days: int = 30
+    default_telemetry_ttl_days: int = 30
+    default_embedding_ttl_days: int = 90
+    default_alert_ttl_days: int = 90
+    default_inference_mode: str = "EDGE"
+    privacy_purge_interval_hours: int = 6
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

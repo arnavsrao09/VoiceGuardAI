@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Menu, X, Activity, Users, Bell, LogOut, Building2 } from 'lucide-react';
+import { Shield, Menu, X, Activity, Users, Bell, Settings, LogOut, Building2, Lock } from 'lucide-react';
 import { apiFetch, getAuthToken, removeAuthToken } from '../../lib/api';
 
 const navLinks = [
@@ -9,6 +9,8 @@ const navLinks = [
   { to: '/keys', label: 'API Keys', icon: Shield },
   { to: '/speakers', label: 'Speaker Profiles', icon: Users },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/privacy', label: 'Privacy', icon: Lock },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Navbar() {
@@ -62,7 +64,7 @@ export default function Navbar() {
           : 'bg-transparent'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2.5 group">
           <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-purple)] flex items-center justify-center shadow-lg shadow-[var(--color-accent-primary-glow)] group-hover:shadow-xl group-hover:shadow-[var(--color-accent-primary-glow)] transition-shadow duration-300">
@@ -82,13 +84,13 @@ export default function Navbar() {
                 <Link
                   key={to}
                   to={to}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`relative flex items-center gap-2.5 px-4 py-2 rounded-lg text-[0.9375rem] font-medium tracking-[-0.01em] transition-all duration-200 ${
                     active
                       ? 'text-[var(--color-accent-primary)]'
                       : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-[18px] h-[18px]" />
                   {label}
                   {active && (
                     <motion.div
@@ -117,16 +119,16 @@ export default function Navbar() {
           ) : (
             <div className="hidden sm:flex items-center gap-3">
               {orgName && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-xs font-medium text-[var(--color-sentinel-text-muted)]">
-                  <Building2 className="w-3.5 h-3.5 text-[var(--color-accent-primary)]" />
+                <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-[0.8125rem] font-medium text-[var(--color-sentinel-text-muted)]">
+                  <Building2 className="w-4 h-4 text-[var(--color-accent-primary)]" />
                   {orgName}
                 </div>
               )}
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-500/40 text-red-400 text-xs font-semibold hover:bg-red-500/10 transition-all duration-200"
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-red-500/40 text-red-400 text-[0.8125rem] font-semibold hover:bg-red-500/10 transition-all duration-200"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-4 h-4" />
                 Log Out
               </button>
             </div>
@@ -162,13 +164,13 @@ export default function Navbar() {
                   <Link
                     key={to}
                     to={to}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-[0.9375rem] font-medium tracking-[-0.01em] transition-colors ${
                       active
                         ? 'text-[var(--color-accent-primary)] bg-[var(--color-accent-primary-dim)]'
                         : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-[18px] h-[18px]" />
                     {label}
                   </Link>
                 );

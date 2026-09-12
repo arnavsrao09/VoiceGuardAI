@@ -31,7 +31,7 @@ export default function AlertsPage() {
             trigger_reason: a.trigger_reason,
             risk_score: a.risk_score,
             created_at: a.created_at,
-            status: 'active',
+            status: a.acknowledged_at ? 'acknowledged' : 'active',
           })));
         }
       } catch (err) {
@@ -48,10 +48,19 @@ export default function AlertsPage() {
 
   const [filterSev, setFilterSev] = useState<string>('all');
 
-  const handleAcknowledge = (id: string) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: 'acknowledged' } : a))
-    );
+  const handleAcknowledge = async (id: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/alerts/${id}/acknowledge`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setAlerts((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, status: 'acknowledged' } : a))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to acknowledge alert:', err);
+    }
   };
 
   const filteredAlerts = alerts.filter(
@@ -73,7 +82,7 @@ export default function AlertsPage() {
 
   return (
     <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
