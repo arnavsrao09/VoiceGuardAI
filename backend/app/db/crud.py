@@ -42,11 +42,12 @@ async def revoke_api_key(db: AsyncSession, key_id: uuid.UUID, organization_id: u
         return True
     return False
 
-async def create_voice_profile(db: AsyncSession, organization_id: uuid.UUID, external_user_id: str, name: str, embedding: list[float], language: str = "en"):
+async def create_voice_profile(db: AsyncSession, organization_id: uuid.UUID, external_user_id: str, name: str, embedding: list[float], language: str = "en", phone_number: str | None = None):
     db_profile = VoiceProfile(
         organization_id=organization_id,
         external_user_id=external_user_id,
         name=name,
+        phone_number=phone_number,
         embedding=embedding,
         language=language
     )

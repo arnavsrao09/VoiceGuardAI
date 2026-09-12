@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Menu, X, Activity, Users, Bell, Settings, LogOut, Building2 } from 'lucide-react';
+import { Shield, Menu, X, Activity, Users, Bell, Settings, LogOut, Building2, Lock } from 'lucide-react';
 import { apiFetch, getAuthToken, removeAuthToken } from '../../lib/api';
 
 const navLinks = [
@@ -9,6 +9,7 @@ const navLinks = [
   { to: '/keys', label: 'API Keys', icon: Shield },
   { to: '/speakers', label: 'Speaker Profiles', icon: Users },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/privacy', label: 'Privacy', icon: Lock },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

@@ -107,6 +107,7 @@ interface SpeakerProfile {
   user_id: string;
   name: string;
   language: string;
+  phone_number?: string | null;
   created_at: string;
   status: 'enrolled' | 'pending';
 }
@@ -218,6 +219,7 @@ export default function SpeakerProfilesPage() {
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [userIdInput, setUserIdInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
   const [langInput, setLangInput] = useState('Kannada / English');
   const [isRecording, setIsRecording] = useState(false);
   const [recorded, setRecorded] = useState(false);
@@ -405,6 +407,7 @@ export default function SpeakerProfilesPage() {
       formData.append('user_id', userIdInput || `usr_${Date.now()}`);
       formData.append('name', nameInput);
       formData.append('language', langInput);
+      if (phoneInput) formData.append('phone_number', phoneInput);
       formData.append('audio', audioBlob, 'enrollment.wav');
 
       // Call REST API endpoint with JWT auth
@@ -426,6 +429,7 @@ export default function SpeakerProfilesPage() {
             user_id: data.user_id,
             name: data.name,
             language: data.language,
+            phone_number: data.phone_number,
             created_at: new Date().toISOString(),
             status: 'enrolled',
           },
@@ -439,6 +443,7 @@ export default function SpeakerProfilesPage() {
             user_id: userIdInput || `usr_${Date.now()}`,
             name: nameInput,
             language: langInput,
+            phone_number: phoneInput,
             created_at: new Date().toISOString(),
             status: 'enrolled',
           },
@@ -454,6 +459,7 @@ export default function SpeakerProfilesPage() {
           user_id: userIdInput || `usr_${Date.now()}`,
           name: nameInput,
           language: langInput,
+          phone_number: phoneInput,
           created_at: new Date().toISOString(),
           status: 'enrolled',
         },
@@ -464,6 +470,7 @@ export default function SpeakerProfilesPage() {
       setShowEnrollModal(false);
       setNameInput('');
       setUserIdInput('');
+      setPhoneInput('');
       setRecorded(false);
       setAudioBlob(null);
       setIsSaving(false);
@@ -772,6 +779,17 @@ export default function SpeakerProfilesPage() {
                     value={userIdInput}
                     onChange={(e) => setUserIdInput(e.target.value)}
                     placeholder="e.g. usr_finance_09"
+                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-sm text-[var(--color-sentinel-text)] focus:outline-none focus:border-[var(--color-accent-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-sentinel-text-muted)] mb-1 block">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder="e.g. +91 98200 12345"
                     className="w-full px-4 py-2.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-sm text-[var(--color-sentinel-text)] focus:outline-none focus:border-[var(--color-accent-primary)]"
                   />
                 </div>

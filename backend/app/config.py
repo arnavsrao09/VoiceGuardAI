@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     twilio_phone_number: str = ""
     alert_sms_to: str = ""
 
+    # Privacy & Retention Defaults
+    default_session_ttl_days: int = 30
+    default_telemetry_ttl_days: int = 30
+    default_embedding_ttl_days: int = 90
+    default_alert_ttl_days: int = 90
+    default_inference_mode: str = "EDGE"
+    privacy_purge_interval_hours: int = 6
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
