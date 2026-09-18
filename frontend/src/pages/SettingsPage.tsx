@@ -57,12 +57,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
+    <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6">
       <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5 pb-2">
               <Settings className="w-6 h-6 text-[var(--color-accent-primary)]" />
               System Thresholds & Model Settings
             </h1>
@@ -83,14 +83,14 @@ export default function SettingsPage() {
 
         {/* Detection Thresholds */}
         <div className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6 mb-6">
-          <h2 className="text-base font-bold text-[var(--color-sentinel-text)] mb-4 flex items-center gap-2">
+          <h2 className="text-base font-bold text-[var(--color-sentinel-text)] mb-4 flex items-center gap-2 pb-4">
             <Sliders className="w-5 h-5 text-[var(--color-accent-primary)]" />
             Detection Sensitivity Thresholds
           </h2>
 
           <div className="flex flex-col gap-6">
             <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
+              <div className="flex justify-between text-xs font-medium mb-1">
                 <span className="text-[var(--color-sentinel-text)]">Silero VAD Speech Probability Threshold</span>
                 <span className="text-[var(--color-accent-primary)]">{vadThreshold.toFixed(2)}</span>
               </div>
@@ -107,7 +107,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
+              <div className="flex justify-between text-xs font-medium mb-1">
                 <span className="text-[var(--color-sentinel-text)]">Deepfake Detection Alert Threshold</span>
                 <span className="text-[var(--color-accent-primary)]">{deepfakeThreshold.toFixed(2)}</span>
               </div>
@@ -124,7 +124,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
+              <div className="flex justify-between text-xs font-medium mb-1">
                 <span className="text-[var(--color-sentinel-text)]">Speaker Verification Cosine Match Threshold</span>
                 <span className="text-[var(--color-accent-primary)]">{speakerThreshold.toFixed(2)}</span>
               </div>
@@ -149,7 +149,7 @@ export default function SettingsPage() {
             Ensemble Fusion Weights (Sum = 1.00)
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-3">
             <div>
               <label className="text-xs font-semibold text-[var(--color-sentinel-text-muted)] mb-1 block">AASIST + XLS-R Deepfake Weight ({wDeepfake.toFixed(2)})</label>
               <input
@@ -211,7 +211,7 @@ export default function SettingsPage() {
                 <Bell className="w-5 h-5 text-amber-400" />
                 Multi-Channel Alert Dispatch
               </h2>
-              <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-1">
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] pt-2">
                 Configure how and where high-risk alerts are delivered.
               </p>
             </div>
@@ -219,36 +219,36 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className={`p-4 rounded-xl border transition-all cursor-pointer ${emailEnabled ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-[var(--color-sentinel-surface-2)] border-[var(--color-sentinel-border)]'}`} onClick={() => setEmailEnabled(!emailEnabled)}>
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-4">
                 <div className={`p-2 rounded-lg ${emailEnabled ? 'bg-indigo-500/20 text-indigo-400' : 'bg-gray-800 text-gray-500'}`}>
                   <Mail className="w-4 h-4" />
                 </div>
                 {emailEnabled ? <ToggleRight className="w-5 h-5 text-indigo-400" /> : <ToggleLeft className="w-5 h-5 text-gray-500" />}
               </div>
               <h4 className="text-xs font-bold text-gray-200">Email Alerts</h4>
-              <p className="text-[10px] text-gray-500 mt-1">SMTP HTML Reports</p>
+              <p className="text-[10px] text-gray-500 pt-2">SMTP HTML Reports</p>
             </div>
 
             <div className={`p-4 rounded-xl border transition-all cursor-pointer ${smsEnabled ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-[var(--color-sentinel-surface-2)] border-[var(--color-sentinel-border)]'}`} onClick={() => setSmsEnabled(!smsEnabled)}>
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-4">
                 <div className={`p-2 rounded-lg ${smsEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-500'}`}>
                   <MessageSquare className="w-4 h-4" />
                 </div>
                 {smsEnabled ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5 text-gray-500" />}
               </div>
               <h4 className="text-xs font-bold text-gray-200">SMS / Twilio</h4>
-              <p className="text-[10px] text-gray-500 mt-1">Instant Text Notifications</p>
+              <p className="text-[10px] text-gray-500 pt-2">Instant Text Notifications</p>
             </div>
 
             <div className={`p-4 rounded-xl border transition-all cursor-pointer ${webhookEnabled ? 'bg-purple-500/10 border-purple-500/30' : 'bg-[var(--color-sentinel-surface-2)] border-[var(--color-sentinel-border)]'}`} onClick={() => setWebhookEnabled(!webhookEnabled)}>
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-4">
                 <div className={`p-2 rounded-lg ${webhookEnabled ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-800 text-gray-500'}`}>
                   <Webhook className="w-4 h-4" />
                 </div>
                 {webhookEnabled ? <ToggleRight className="w-5 h-5 text-purple-400" /> : <ToggleLeft className="w-5 h-5 text-gray-500" />}
               </div>
               <h4 className="text-xs font-bold text-gray-200">Enterprise Webhook</h4>
-              <p className="text-[10px] text-gray-500 mt-1">JSON HTTP POST Payloads</p>
+              <p className="text-[10px] text-gray-500 pt-2">JSON HTTP POST Payloads</p>
             </div>
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                 </div>
                 Privacy & Data Protection Compliance (DPDP Act 2023 / GDPR)
               </h2>
-              <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-1">
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] pt-2">
                 Configure data minimization rules and edge inference settings.
               </p>
             </div>
@@ -283,7 +283,7 @@ export default function SettingsPage() {
                     {privacyMode ? 'ENFORCED' : 'DISABLED'}
                   </span>
                 </div>
-                <p className="text-[11px] text-[var(--color-sentinel-text-dim)] mt-1.5 leading-relaxed">
+                <p className="text-[11px] text-[var(--color-sentinel-text-dim)] pt-2 leading-relaxed">
                   Processes PCM audio transiently in RAM. Audio buffers are purged immediately after feature extraction. 
                   Zero raw audio recordings are written to disk when this is active.
                 </p>
@@ -305,7 +305,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)]">
               <div>
                 <h4 className="text-sm font-bold text-[var(--color-sentinel-text)]">Regulatory Compliance Report</h4>
-                <p className="text-[11px] text-[var(--color-sentinel-text-dim)] mt-0.5">
+                <p className="text-[11px] text-[var(--color-sentinel-text-dim)] pt-2">
                   Generate audit documentation for Digital Personal Data Protection (DPDP) Act 2023 & GDPR Article 9.
                 </p>
               </div>

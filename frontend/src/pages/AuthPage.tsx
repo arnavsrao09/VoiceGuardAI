@@ -82,18 +82,18 @@ export default function AuthPage() {
     <div className="min-h-screen pt-24 pb-12 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative z-10">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="h-12 w-12 bg-red-500/20 rounded-xl flex items-center justify-center border border-red-500/30">
-            <ShieldAlert className="h-6 w-6 text-red-500" />
+          <div className="h-12 w-12 mb-4 bg-[var(--color-accent-primary)]/10 rounded-xl flex items-center justify-center border border-[var(--color-accent-primary)]/20">
+            <ShieldAlert className="h-6 w-6 text-[var(--color-accent-primary)]" />
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
           {isLogin ? 'Organization Login' : 'Register Organization'}
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
+        <p className="pt-3 text-center text-sm text-gray-400">
           Or{' '}
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="font-medium text-red-400 hover:text-red-300 transition-colors"
+            className="font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]/80 transition-colors"
           >
             {isLogin ? 'register a new organization' : 'log in to your account'}
           </button>
@@ -172,7 +172,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 focus:ring-offset-gray-900 transition-colors disabled:opacity-50"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-black bg-[var(--color-accent-primary)] hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-accent-primary)] focus:ring-offset-gray-900 transition-colors disabled:opacity-50"
               >
                 {loading ? 'Processing...' : (isLogin ? 'Sign in' : 'Register')}
               </button>

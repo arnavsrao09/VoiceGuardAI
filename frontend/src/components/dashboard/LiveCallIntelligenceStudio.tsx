@@ -457,7 +457,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
                     </span>
                   )}
                 </h3>
-                <p className="text-xs text-[var(--color-sentinel-text-dim)] mt-0.5">
+                <p className="text-xs text-[var(--color-sentinel-text-dim)] pt-2">
                   Real-time voice stream transcription, money amount extraction & coercion detection
                 </p>
               </div>
@@ -613,7 +613,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
                 <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">
                   Call Telemetry & Device
                 </h3>
-                <p className="text-xs text-[var(--color-sentinel-text-dim)] mt-0.5">
+                <p className="text-xs text-[var(--color-sentinel-text-dim)] pt-2">
                   Carrier network & hardware fingerprint
                 </p>
               </div>

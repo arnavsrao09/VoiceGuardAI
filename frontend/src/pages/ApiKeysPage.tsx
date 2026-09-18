@@ -189,7 +189,7 @@ export default function ApiKeysPage() {
   const activeTab = CODE_TABS.find(t => t.id === activeCodeTab) || CODE_TABS[0];
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto">
+    <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto">
 
       {/* ────── Page Header ────── */}
       <div className="mb-10">
@@ -199,14 +199,14 @@ export default function ApiKeysPage() {
           </div>
           API Keys & Integration
         </h1>
-        <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1.5 max-w-xl">
+        <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1.5 pt-3">
           Manage authentication keys for your organisation's B2B integrations. Each key grants access to real-time audio analysis, automated workflows, and webhook event subscriptions.
         </p>
       </div>
 
       {/* ────── 1. What Your API Key Unlocks Section (First) ────── */}
       <div className="mb-10">
-        <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 mb-4">
+        <h2 className="text-base font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 pb-4">
           <BookOpen className="w-4 h-4 text-[var(--color-accent-purple)]" />
           What Your API Key Unlocks
         </h2>
@@ -222,12 +222,12 @@ export default function ApiKeysPage() {
                 className="rounded-2xl border p-4 transition-all hover:border-opacity-60 flex flex-col justify-between group"
                 style={{ borderColor: cap.borderColor, background: cap.bgColor }}
               >
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cap.color}15` }}>
+                <div className="flex-1 flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 self-start" style={{ background: `${cap.color}15` }}>
                     <Icon className="w-[18px] h-[18px]" style={{ color: cap.color }} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h4 className="text-[0.8125rem] font-bold text-[var(--color-sentinel-text)] mb-1">{cap.title}</h4>
+                    <h4 className="text-[0.8125rem] font-bold text-[var(--color-sentinel-text)] pb-2">{cap.title}</h4>
                     <p className="text-[11px] text-[var(--color-sentinel-text-muted)] leading-relaxed">{cap.description}</p>
                   </div>
                 </div>
@@ -381,7 +381,7 @@ export default function ApiKeysPage() {
                 <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400"><Code2 className="w-4 h-4" /></span>
                 Developer Integration Guide
               </h2>
-              <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-1">
+              <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-1 pt-2">
                 Connect VoiceGuardAI into core banking, contact centre platforms, and VoIP PBX setups using these code examples.
               </p>
             </div>

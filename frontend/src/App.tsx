@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import LandingPage from './pages/LandingPage';
 import DashboardPage from './pages/DashboardPage';
@@ -10,19 +10,24 @@ import AuthPage from './pages/AuthPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
-function App() {
+function AppRoutes() {
+  const location = useLocation();
+
+  const pagesWithSidebarPadding = [
+    '/keys',
+    '/speakers',
+    '/alerts',
+    '/settings',
+  ];
+
+  const needsSidebarPadding = pagesWithSidebarPadding.includes(location.pathname);
+
   return (
-    <BrowserRouter>
-      {/* Animated background mesh */}
-      <div className="gradient-mesh" />
-
-      {/* Navigation */}
-      <Navbar />
-
-      {/* Routes */}
+    <div className={needsSidebarPadding ? 'md:pl-64' : ''}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
+
         <Route
           path="/dashboard"
           element={
@@ -31,6 +36,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/keys"
           element={
@@ -39,6 +45,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/speakers"
           element={
@@ -47,6 +54,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/alerts"
           element={
@@ -55,6 +63,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/settings"
           element={
@@ -72,6 +81,21 @@ function App() {
           }
         />
       </Routes>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      {/* Animated background mesh */}
+      <div className="gradient-mesh" />
+
+      {/* Navigation */}
+      <Navbar />
+
+      {/* Routes */}
+      <AppRoutes />
     </BrowserRouter>
   );
 }

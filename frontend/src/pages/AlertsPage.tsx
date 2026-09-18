@@ -81,16 +81,16 @@ export default function AlertsPage() {
   };
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
+    <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6">
       <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-[var(--color-sentinel-text)] flex items-center gap-2.5 pb-3">
               <ShieldAlert className="w-6 h-6 text-[var(--color-risk-critical)]" />
               Detection Alert History
             </h1>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1">
+            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-3">
               Audit trail of voice cloning alerts, deepfake probability spikes, and mid-call identity drifts.
             </p>
           </div>
@@ -170,8 +170,8 @@ export default function AlertsPage() {
                       <span className="text-xs font-mono text-[var(--color-sentinel-text-dim)]">Session {a.session_id}</span>
                       <span className="text-xs font-bold text-[var(--color-sentinel-text-muted)]">Risk Score: {a.risk_score.toFixed(2)}</span>
                     </div>
-                    <p className="text-sm font-semibold text-[var(--color-sentinel-text)]">{a.trigger_reason}</p>
-                    <p className="text-xs text-[var(--color-sentinel-text-dim)] flex items-center gap-1 mt-1">
+                    <p className="text-sm font-semibold text-[var(--color-sentinel-text)] mb-2">{a.trigger_reason}</p>
+                    <p className="text-xs text-[var(--color-sentinel-text-dim)] flex items-center gap-1 pt-1">
                       <Clock className="w-3 h-3" /> {new Date(a.created_at).toLocaleString()}
                     </p>
                   </div>
