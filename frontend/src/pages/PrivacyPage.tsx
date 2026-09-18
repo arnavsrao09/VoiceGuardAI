@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Shield, Clock, Database, AlertTriangle, UserMinus, ShieldCheck, Download, Trash2, CalendarDays } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Clock, Database, Download, Shield, ShieldCheck, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 
 interface Inventory {
@@ -117,14 +117,14 @@ export default function PrivacyPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen pt-24 pb-12 flex items-center justify-center">
+      <div className="min-h-screen pt-10 pb-12 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-accent-primary)]"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
+    <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6">
       <div className="max-w-[1440px] mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>

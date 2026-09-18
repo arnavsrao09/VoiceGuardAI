@@ -1,14 +1,14 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import Navbar from './components/layout/Navbar';
-import LandingPage from './pages/LandingPage';
-import DashboardPage from './pages/DashboardPage';
-import SpeakerProfilesPage from './pages/SpeakerProfilesPage';
-import AlertsPage from './pages/AlertsPage';
-import SettingsPage from './pages/SettingsPage';
-import PrivacyPage from './pages/PrivacyPage';
-import AuthPage from './pages/AuthPage';
-import ApiKeysPage from './pages/ApiKeysPage';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import Navbar from './components/layout/Navbar';
+import AlertsPage from './pages/AlertsPage';
+import ApiKeysPage from './pages/ApiKeysPage';
+import AuthPage from './pages/AuthPage';
+import DashboardPage from './pages/DashboardPage';
+import LandingPage from './pages/LandingPage';
+import PrivacyPage from './pages/PrivacyPage';
+import SettingsPage from './pages/SettingsPage';
+import SpeakerProfilesPage from './pages/SpeakerProfilesPage';
 
 function AppRoutes() {
   const location = useLocation();
@@ -18,6 +18,7 @@ function AppRoutes() {
     '/speakers',
     '/alerts',
     '/settings',
+    '/privacy',
   ];
 
   const needsSidebarPadding = pagesWithSidebarPadding.includes(location.pathname);
