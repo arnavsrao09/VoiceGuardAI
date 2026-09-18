@@ -81,7 +81,7 @@ function ParticleGrid() {
         const dy = mouse.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const glow = dist < 150 ? 1 - dist / 150 : 0;
-        const alpha = 0.15 + Math.sin(p.pulse) * 0.08 + glow * 0.5;
+        const alpha = 0.15 + Math.sin(p.pulse) * 0.08 + glow * 0.65;
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r + glow * 2, 0, Math.PI * 2);
@@ -295,17 +295,17 @@ function TryItDemo() {
         </div>
       )}
 
-      <div className="p-8 sm:p-10">
+      <div className="p-12 sm:p-14">
         {mode === 'idle' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="text-center"
           >
-            <h3 className="text-xl sm:text-2xl font-bold text-[var(--color-sentinel-text)] mb-3">
+            <h3 className="text-xl sm:text-2xl font-bold text-[var(--color-sentinel-text)] pb-6">
               Try it right now
             </h3>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] mb-8 max-w-md mx-auto">
+            <p className="text-sm text-[var(--color-sentinel-text-muted)] pb-6 mb-10 max-w-md mx-auto">
               Record your voice or simulate a deepfake upload to see the detection engine in action.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -510,7 +510,7 @@ function PipelineSection() {
           transition={{ duration: 0.5 }}
           className="mb-14"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-3">
+          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] pb-4">
             Six-stage detection pipeline
           </h2>
           <p className="text-[var(--color-sentinel-text-muted)] max-w-lg">
@@ -567,14 +567,14 @@ function PipelineSection() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-8 h-full flex flex-col justify-center"
+              className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6 h-full flex flex-col justify-center"
             >
               {(() => {
                 const step = pipelineSteps[activeStep];
                 const Icon = step.icon;
                 return (
                   <>
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-6">
                       <div className="w-12 h-12 rounded-xl bg-[var(--color-accent-primary)] flex items-center justify-center">
                         <Icon className="w-6 h-6 text-white" />
                       </div>
@@ -583,11 +583,11 @@ function PipelineSection() {
                         <p className="text-xs text-[var(--color-accent-primary)]">{step.tech}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-[var(--color-sentinel-text-muted)] leading-relaxed mb-6">
+                    <p className="text-sm text-[var(--color-sentinel-text-muted)] leading-relaxed mb-8">
                       {step.detail}
                     </p>
                     {/* Visual representation */}
-                    <div className="rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] p-4 h-32 flex items-center justify-center overflow-hidden">
+                    <div className="rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] p-4 h-32 flex items-center justify-center overflow-hidden" style={{ marginTop: '32px' }}>
                       <HeroWaveform active={activeStep < 3} />
                     </div>
                   </>
@@ -679,13 +679,13 @@ export default function LandingPage() {
 
         <motion.div
           style={{ y: heroY }}
-          className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center"
+          className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center -translate-y-6"
         >
           <motion.h1
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: 'easeOut' }}
-            className="text-5xl sm:text-6xl md:text-[5rem] font-extrabold tracking-tight leading-[1.05] mb-6 text-[var(--color-sentinel-text)]"
+            className="text-5xl sm:text-6xl md:text-[5rem] font-extrabold tracking-tight leading-[1.05] pb-6 text-[var(--color-sentinel-text)]"
           >
             Detect voice clones
             <br />
@@ -706,12 +706,15 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="flex flex-wrap items-center justify-center gap-4 mb-16"
+            className="flex flex-wrap items-center justify-center gap-4 mt-6 mb-[55px]"
           >
             <Link
               to="/dashboard"
-              className="group inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-110 hover:scale-[1.03] transition-all duration-200 shadow-lg"
-              style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.25)' }}
+              className="group inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-105 hover:scale-[1.02] transition-all duration-200 shadow-lg"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--color-accent-primary) 78%, var(--color-sentinel-bg))',
+                boxShadow: '0 6px 20px rgba(0,229,200,0.12)',
+              }}
             >
               <Activity className="w-5 h-5" />
               Launch Dashboard
@@ -719,7 +722,7 @@ export default function LandingPage() {
             </Link>
             <a
               href="#try-it"
-              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl border border-[var(--color-sentinel-border)] text-[var(--color-sentinel-text-muted)] font-medium hover:text-[var(--color-sentinel-text)] hover:border-[var(--color-sentinel-text-dim)] transition-all duration-200"
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border)] text-[var(--color-sentinel-text)] font-semibold hover:border-[var(--color-accent-primary)] transition-all duration-200"
             >
               Try it now
             </a>
@@ -738,8 +741,13 @@ export default function LandingPage() {
       </section>
 
       {/* ── Try It Section ── */}
-      <section id="try-it" className="py-28 px-6">
-        <div className="max-w-2xl mx-auto">
+      <section
+        id="try-it"
+        className="relative min-h-[100dvh] flex items-center py-20 px-6 overflow-hidden"
+      >
+        <ParticleGrid />
+
+        <div className="relative z-10 max-w-3xl mx-auto">
           <TryItDemo />
         </div>
       </section>
@@ -756,10 +764,10 @@ export default function LandingPage() {
             transition={{ duration: 0.5 }}
             className="mb-14"
           >
-            <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-3">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-5">
               What makes it different
             </h2>
-            <p className="text-[var(--color-sentinel-text-muted)] max-w-lg">
+            <p className="text-[var(--color-sentinel-text-muted)] max-w-lg pt-2">
               Purpose-built for voice cloning threats. Not a general audio classifier.
             </p>
           </motion.div>
@@ -782,7 +790,7 @@ export default function LandingPage() {
                   <h3 className="text-sm font-bold text-[var(--color-sentinel-text)] mb-2">
                     {feat.title}
                   </h3>
-                  <p className="text-xs text-[var(--color-sentinel-text-muted)] leading-relaxed">
+                  <p className="text-xs text-[var(--color-sentinel-text-muted)] leading-relaxed pt-2">
                     {feat.description}
                   </p>
                 </motion.div>
@@ -795,14 +803,14 @@ export default function LandingPage() {
       {/* ── Risk Scale ── */}
       <section className="py-28 px-6">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-3">
+          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] pb-4">
             Four-tier risk scoring
           </h2>
-          <p className="text-[var(--color-sentinel-text-muted)] mb-12 max-w-lg">
+          <p className="text-[var(--color-sentinel-text-muted)] mb-16 max-w-lg">
             Weighted ensemble fusion with EMA temporal smoothing. Configurable per deployment.
           </p>
 
-          <div className="relative">
+          <div className="relative pt-7">
             {/* Risk bar */}
             <div className="h-3 rounded-full overflow-hidden flex mb-8">
               <div className="flex-[3] bg-[var(--color-risk-low)]" />
@@ -833,20 +841,23 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="py-28 px-6">
+      <section className="pt-16 pb-28 px-6">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-8">
             Deploy in one command
           </h2>
-          <div className="rounded-xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] p-4 mb-8">
+          <div className="mt-6 rounded-xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] p-4 mb-8">
             <code className="text-sm text-[var(--color-accent-primary)]">
               docker-compose up -d
             </code>
           </div>
           <Link
             to="/dashboard"
-            className="group inline-flex items-center gap-2.5 px-8 py-4 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-110 hover:scale-[1.03] transition-all duration-200 shadow-lg"
-            style={{ boxShadow: '0 8px 32px rgba(0,229,200,0.25)' }}
+            className="group inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[var(--color-accent-primary)] text-[var(--color-sentinel-bg)] font-semibold text-base hover:brightness-105 hover:scale-[1.02] transition-all duration-200 shadow-lg"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--color-accent-primary) 78%, var(--color-sentinel-bg))',
+              boxShadow: '0 6px 20px rgba(0,229,200,0.12)',
+            }}
           >
             <Activity className="w-5 h-5" />
             Open Dashboard

@@ -887,7 +887,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="min-h-screen pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-[1440px] mx-auto">
+      <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6 lg:px-8 md:ml-64 w-auto">
         {/* Error Banner */}
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2">
@@ -920,9 +920,9 @@ export default function DashboardPage() {
         </AnimatePresence>
 
         {/* ── 1. Top Mission Control Header ── */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-6 border-b border-[var(--color-sentinel-border-subtle)]">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-8 border-b border-[var(--color-sentinel-border-subtle)]">
           <div>
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex items-center gap-2.5 mb-3">
               <span className="px-2.5 py-0.5 rounded-md bg-[var(--color-accent-primary-dim)] border border-[var(--color-accent-primary)]/30 text-[10px] font-bold tracking-wider uppercase text-[var(--color-accent-primary)]">
                 SURVEILLANCE MISSION CONTROL
               </span>
@@ -968,7 +968,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 2. Top Glance KPI Cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {/* KPI 1: Active Audio Feed */}
           <div className="p-4 rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)]/80 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-[var(--color-sentinel-text-dim)] mb-2">
@@ -1119,7 +1119,7 @@ export default function DashboardPage() {
                     <h3 className="text-sm font-bold text-[var(--color-sentinel-text)]">
                       Live Acoustic Stream Forensics
                     </h3>
-                    <p className="text-[10px] text-[var(--color-sentinel-text-dim)]">
+                    <p className="text-[10px] text-[var(--color-sentinel-text-dim)] pt-2">
                       Dual-domain waveform & frequency spectral breakdown
                     </p>
                   </div>
@@ -1241,10 +1241,10 @@ export default function DashboardPage() {
         {/* ── 4. Tabbed Deep Intelligence Workspace ── */}
         <div className="space-y-4">
           {/* Tab Navigation Pill Bar */}
-          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] shadow-md overflow-x-auto">
+          <div className="grid grid-cols-4 gap-2 p-1.5 rounded-2xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] shadow-md overflow-x-auto">
             <button
               onClick={() => setActiveTab('intelligence')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'intelligence'
                   ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
                   : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
@@ -1259,7 +1259,7 @@ export default function DashboardPage() {
 
             <button
               onClick={() => setActiveTab('forensics')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'forensics'
                   ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
                   : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
@@ -1271,7 +1271,7 @@ export default function DashboardPage() {
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'history'
                   ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
                   : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
@@ -1286,7 +1286,7 @@ export default function DashboardPage() {
 
             <button
               onClick={() => setActiveTab('terminal')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'terminal'
                   ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
                   : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'

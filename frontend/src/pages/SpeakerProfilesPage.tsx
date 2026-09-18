@@ -486,7 +486,7 @@ export default function SpeakerProfilesPage() {
   };
 
   return (
-    <div className="min-h-screen pt-24 pb-12 px-4 sm:px-6">
+    <div className="min-h-screen pt-10 pb-12 px-4 sm:px-6">
       <div className="max-w-[1440px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
@@ -495,7 +495,7 @@ export default function SpeakerProfilesPage() {
               <UserCheck className="w-6 h-6 text-[var(--color-accent-primary)]" />
               Speaker Voice Enrolment
             </h1>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1">
+            <p className="text-sm text-[var(--color-sentinel-text-muted)] mt-1 pt-2">
               Enroll trusted speaker voice profiles to enable 192-dim ECAPA-TDNN speaker verification during live calls.
             </p>
           </div>
@@ -516,7 +516,7 @@ export default function SpeakerProfilesPage() {
             <ShieldCheck className="w-5 h-5 text-[var(--color-accent-primary)]" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)]">Zero Raw Audio Storage Policy</h3>
+            <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] pb-2">Zero Raw Audio Storage Policy</h3>
             <p className="text-xs text-[var(--color-sentinel-text-muted)] mt-0.5 leading-relaxed">
               VoiceGuardAI does not store raw audio recordings. Enrolled voices are converted into anonymized 192-dimensional numerical vectors using ECAPA-TDNN and stored securely in PostgreSQL <code className="text-[var(--color-accent-primary)] font-mono">pgvector</code>.
             </p>
@@ -529,10 +529,10 @@ export default function SpeakerProfilesPage() {
             <div className="w-8 h-8 border-3 border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : profiles.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-12 text-center">
+          <div className="rounded-2xl border border-dashed border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-12 text-center flex flex-col items-center justify-center">
             <UserCheck className="w-12 h-12 text-[var(--color-sentinel-text-dim)] mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-2">No Speaker Profiles Enrolled</h3>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] max-w-md mx-auto">
+            <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-4">No Speaker Profiles Enrolled</h3>
+            <p className="w-full text-sm text-[var(--color-sentinel-text-muted)] max-w-md mx-auto text-center relative top-3">
               Enroll your first speaker voice profile to enable ECAPA-TDNN speaker verification during live call monitoring.
             </p>
           </div>
@@ -552,7 +552,7 @@ export default function SpeakerProfilesPage() {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-[var(--color-sentinel-text)]">{p.name}</h3>
-                    <p className="text-xs text-[var(--color-sentinel-text-dim)] flex items-center gap-1 mt-0.5">
+                    <p className="text-xs text-[var(--color-sentinel-text-dim)] flex items-center gap-1 pt-2">
                       <Key className="w-3 h-3" /> {p.user_id}
                     </p>
                   </div>
@@ -622,10 +622,13 @@ export default function SpeakerProfilesPage() {
               exit={{ scale: 0.92, opacity: 0 }}
               className="w-full max-w-md rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6"
             >
-              <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-1">
+              <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-3">
                 Test Speaker Verification
               </h2>
-              <p className="text-xs text-[var(--color-sentinel-text-muted)] mb-3">
+              <p
+                className="text-xs text-[var(--color-sentinel-text-muted)] mb-3"
+                style={{ marginTop: '10px', marginBottom: '12px' }}
+              >
                 Testing live voice clip against enrolled profile: <strong className="text-[var(--color-accent-primary)]">{testingProfile.name}</strong> ({testingProfile.language})
               </p>
 
@@ -751,9 +754,9 @@ export default function SpeakerProfilesPage() {
               exit={{ scale: 0.92, opacity: 0 }}
               className="w-full max-w-lg rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-6 max-h-[90vh] overflow-y-auto"
             >
-              <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-4">Enroll New Speaker Voice</h2>
+              <h2 className="text-lg font-bold text-[var(--color-sentinel-text)] mb-6">Enroll New Speaker Voice</h2>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 mt-2">
                 <div>
                   <label className="text-xs font-semibold text-[var(--color-sentinel-text-muted)] mb-1 block">Speaker Name & Title</label>
                   <input
@@ -955,8 +958,8 @@ export default function SpeakerProfilesPage() {
                   <div className="w-10 h-10 rounded-xl bg-[rgba(0,229,200,0.12)] text-[var(--color-accent-primary)] flex items-center justify-center">
                     <Activity className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] flex items-center gap-2">
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-[var(--color-sentinel-text)] flex items-center gap-2 mb-2">
                       Cross-Session Biometric Consistency
                       {consistencyData && (
                         <span className={`text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full font-bold border ${
@@ -970,7 +973,7 @@ export default function SpeakerProfilesPage() {
                         </span>
                       )}
                     </h3>
-                    <p className="text-xs text-[var(--color-sentinel-text-dim)] mt-0.5">
+                    <p className="text-xs text-[var(--color-sentinel-text-dim)] mt-0.5 pt-2">
                       Target Speaker: <strong className="text-[var(--color-sentinel-text)]">{consistencyProfile.name}</strong> · ID: {consistencyProfile.user_id}
                     </p>
                   </div>
