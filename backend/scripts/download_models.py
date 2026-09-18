@@ -115,83 +115,27 @@ def download_ecapa_tdnn():
 # ----------------------------------------------
 def download_aasist():
     """
-    AASIST weights are typically distributed via the original GitHub repo
-    (https://github.com/clovaai/aasist).  This function creates a
-    placeholder ONNX model that matches the expected I/O contract so the
-    rest of the pipeline can run.  Replace with real weights for production.
+    AASIST weights are provided locally and exported via export_aasist.py.
+    This function simply verifies that the exported ONNX model exists.
     """
-    print("[3/4] Creating AASIST ONNX stub ...")
+    print("[3/4] Verifying AASIST ONNX model ...")
 
-    class _AasistStub(torch.nn.Module):
-        """Minimal stub: raw waveform -> [bonafide, spoof] logits."""
-        def __init__(self):
-            super().__init__()
-            self.fc = torch.nn.Linear(32000, 2)
-
-        def forward(self, x):
-            return self.fc(x)
-
-    model = _AasistStub()
-    model.eval()
-    dummy = torch.randn(1, 32000)
     onnx_path = os.path.join(MODEL_DIR, "aasist.onnx")
-
-    torch.onnx.export(
-        model,
-        dummy,
-        onnx_path,
-        input_names=["audio"],
-        output_names=["logits"],
-        dynamic_axes={"audio": {0: "batch"}},
-        opset_version=14,
-    )
-    print(f"  [OK] AASIST ONNX -> {onnx_path}")
-    print("    [WARNING] Replace with real AASIST weights for production accuracy.")
+    if os.path.exists(onnx_path):
+        print(f"  [OK] Found AASIST ONNX -> {onnx_path}")
+    else:
+        print(f"  [WARNING] AASIST ONNX not found at {onnx_path}")
+        print("    Please run 'python -m backend.scripts.export_aasist' to export it.")
 
 
-# ----------------------------------------------
-# 4.  XLS-R 300M  (HuggingFace Transformers -> ONNX)
-# ----------------------------------------------
 def download_xlsr():
-    print("[4/4] Downloading XLS-R 300M ...")
-    try:
-        from transformers import Wav2Vec2Model
-
-        model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-xls-r-300m")
-        model.eval()
-
-        # Wrap with a linear classification head
-        class _XlsrClassifier(torch.nn.Module):
-            def __init__(self, backbone):
-                super().__init__()
-                self.backbone = backbone
-                self.head = torch.nn.Linear(1024, 2)  # XLS-R 300M hidden = 1024
-
-            def forward(self, input_values):
-                outputs = self.backbone(input_values)
-                hidden = outputs.last_hidden_state.mean(dim=1)  # mean pool
-                return self.head(hidden)
-
-        classifier = _XlsrClassifier(model)
-        classifier.eval()
-
-        dummy = torch.randn(1, 32000)
-        onnx_path = os.path.join(MODEL_DIR, "xlsr.onnx")
-
-        torch.onnx.export(
-            classifier,
-            dummy,
-            onnx_path,
-            input_names=["input_values"],
-            output_names=["logits"],
-            dynamic_axes={"input_values": {0: "batch", 1: "time"}},
-            opset_version=14,
-        )
-        print(f"  [OK] Exported ONNX -> {onnx_path}")
-    except Exception as e:
-        print(f"  [ERROR] XLS-R export failed: {e}")
-        print("    This is expected if 'transformers' is not installed or download is slow.")
-        print("    The backend will fall back to mock mode.")
+    print("[4/4] Verifying XLS-R 300M ONNX model ...")
+    onnx_path = os.path.join(MODEL_DIR, "xlsr.onnx")
+    if os.path.exists(onnx_path):
+        print(f"  [OK] Found XLS-R ONNX -> {onnx_path}")
+    else:
+        print(f"  [WARNING] XLS-R ONNX not found at {onnx_path}")
+        print("    Please run 'python -m backend.scripts.evaluate_and_export_xlsr' to export it.")
 
 
 # ----------------------------------------------

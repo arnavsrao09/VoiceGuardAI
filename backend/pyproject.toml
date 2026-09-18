@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.1",
     "alembic>=1.19.1",
+    "apscheduler>=3.11.3",
     "asyncpg>=0.31.0",
     "bcrypt<4.0.0",
     "email-validator>=2.3.0",
@@ -15,8 +16,10 @@ dependencies = [
     "huggingface-hub>=0.33.0",
     "librosa>=0.11.0",
     "numpy>=2.4.6",
+    "onnx>=1.22.0",
     "onnxruntime>=1.29.0",
     "onnxscript>=0.7.1",
+    "pandas>=3.0.5",
     "passlib[bcrypt]>=1.7.4",
     "pgvector>=0.5.0",
     "praat-parselmouth>=0.4.7",
@@ -27,13 +30,23 @@ dependencies = [
     "python-multipart>=0.0.20",
     "pyworld>=0.3.5",
     "redis>=8.1.0",
+    "scikit-learn>=1.9.0",
     "scipy>=1.17.1",
     "silero-vad>=6.2.1",
     "soundfile>=0.13.1",
     "speechbrain>=1.1.1",
     "sqlalchemy>=2.0.52",
-    "torch>=2.13.0",
-    "torchaudio>=2.11.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
     "transformers>=4.53.0",
     "uvicorn[standard]>=0.52.4",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }
