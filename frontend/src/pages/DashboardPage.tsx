@@ -18,7 +18,8 @@ import {
   Terminal,
   FileSpreadsheet,
   Fingerprint,
-  MessageSquare
+  MessageSquare,
+  PhoneCall
 } from 'lucide-react';
 import AudioVisualizer from '../components/dashboard/AudioVisualizer';
 import LiveCallIntelligenceStudio from '../components/dashboard/LiveCallIntelligenceStudio';
@@ -592,7 +593,8 @@ export default function DashboardPage() {
   const [selectedPhone, setSelectedPhone] = useState<string>('+91 98200 12345');
   const [isExtractedFromSpeech, setIsExtractedFromSpeech] = useState<boolean>(false);
   const [isInterceptorOpen, setIsInterceptorOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'intelligence' | 'forensics' | 'history' | 'terminal'>('intelligence');
+  const [isPreTransactionWarningOpen, setPreTransactionWarningOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'intelligence' | 'forensics' | 'history'>('intelligence');
 
   const handleLiveIntentExtracted = useCallback((intent: {
     amount?: number | null;
@@ -1046,9 +1048,21 @@ export default function DashboardPage() {
               <p className="text-base font-bold text-[var(--color-sentinel-text)] truncate">
                 ₹{selectedAmount.toLocaleString('en-IN')} · {selectedTransferType}
               </p>
-              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 truncate">
+              <p className="text-[11px] text-[var(--color-sentinel-text-muted)] mt-0.5 truncate mb-3">
                 {selectedLocation}
               </p>
+              <button
+                onClick={() => {
+                  if (currentScore >= 0.30 || (speakerMatchScore !== null && speakerMatchScore < 0.70)) {
+                    setPreTransactionWarningOpen(true);
+                  } else {
+                    triggerCountermeasure("Transaction Approved");
+                  }
+                }}
+                className="w-full py-1.5 rounded-lg bg-[var(--color-accent-primary)] hover:brightness-110 text-[#0c0d14] font-bold text-xs transition-all shadow-md"
+              >
+                Execute Transaction
+              </button>
             </div>
           </div>
         </div>
@@ -1283,19 +1297,6 @@ export default function DashboardPage() {
                 {alerts.length}
               </span>
             </button>
-
-            <button
-              onClick={() => setActiveTab('terminal')}
-              className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === 'terminal'
-                  ? 'bg-[var(--color-accent-primary)] text-[#0c0d14] shadow-md'
-                  : 'text-[var(--color-sentinel-text-muted)] hover:text-[var(--color-sentinel-text)] hover:bg-[var(--color-sentinel-surface-2)]'
-              }`}
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              Pipeline Inference Terminal
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-            </button>
           </div>
 
           {/* Tab Content Panels */}
@@ -1378,47 +1379,6 @@ export default function DashboardPage() {
                 </div>
               </motion.div>
             )}
-
-            {/* Tab 4: Pipeline Inference Terminal */}
-            {activeTab === 'terminal' && (
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
-                className="rounded-2xl border border-[var(--color-sentinel-border)] bg-[var(--color-sentinel-surface)] p-5 shadow-xl"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-[var(--color-sentinel-text)] flex items-center gap-2">
-                    <Terminal className="w-4 h-4 text-cyan-400" />
-                    Live ML Model Inference Stream
-                  </h3>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono">
-                    {modelLogs.length} chunks analyzed
-                  </span>
-                </div>
-
-                <div className="bg-[#141622] rounded-xl p-4 h-80 overflow-y-auto font-mono text-xs text-[#a6accd] flex flex-col gap-2 border border-[#2a2d3d]">
-                  {modelLogs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 italic">
-                      <Terminal className="w-6 h-6 mb-2 text-gray-600" />
-                      Awaiting live audio chunks for real-time model inference...
-                    </div>
-                  ) : (
-                    modelLogs.map((log, idx) => (
-                      <div key={`${log.timestamp}-${log.chunk_index}-${idx}`} className="border-b border-[#252839] pb-2 mb-1 last:border-0 last:mb-0 last:pb-0">
-                        <span className="text-[#89b4fa]">[{log.timestamp}]</span> <span className="text-[#cba6f7]">Chunk #{log.chunk_index}</span>
-                        <br/>
-                        <span className="text-[#f38ba8]">Deepfake (AASIST):</span> {log.details.aasist_score?.toFixed(4) ?? 'N/A'} | <span className="text-[#f38ba8]">XLS-R:</span> {log.details.xlsr_score?.toFixed(4) ?? 'N/A'}
-                        <br/>
-                        <span className="text-[#a6e3a1]">Speaker:</span> Verified: {log.details.speaker_verified ? 'Yes' : 'No'} | Sim: {log.details.speaker_similarity !== undefined ? log.details.speaker_similarity.toFixed(4) : 'N/A'}
-                        <br/>
-                        <span className="text-[#f9e2af]">Prosody:</span> f0_mean: {log.details.prosody.f0_mean.toFixed(2)}, jitter: {log.details.prosody.jitter.toFixed(4)}, hnr: {log.details.prosody.hnr.toFixed(2)}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </motion.div>
-            )}
           </div>
         </div>
       </div>
@@ -1432,6 +1392,101 @@ export default function DashboardPage() {
               handleStartMonitoring(file);
             }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Pre-Transaction Warning Modal */}
+      <AnimatePresence>
+        {isPreTransactionWarningOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[var(--color-sentinel-surface)] border-2 border-amber-500/50 rounded-2xl p-6 shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute -top-20 -right-20 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+              
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--color-sentinel-text)]">Pre-Transaction Warning</h3>
+                  <p className="text-xs text-amber-400 font-semibold">Elevated Risk Detected ({(currentScore * 100).toFixed(0)}%)</p>
+                </div>
+              </div>
+
+              <div className="bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] rounded-xl p-4 mb-5 space-y-2">
+                <p className="text-xs text-gray-300 leading-relaxed">
+                  The voice biometric and impersonation analysis indicates potential risk. Executing this ₹{selectedAmount.toLocaleString('en-IN')} transaction is not recommended without secondary verification.
+                </p>
+              </div>
+
+              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
+                Recommended Secondary Verifications
+              </h4>
+
+              <div className="space-y-2.5 mb-5">
+                <button
+                  onClick={() => { triggerCountermeasure("Voice Callback Initiated"); setPreTransactionWarningOpen(false); }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-[var(--color-sentinel-surface-3)] hover:bg-[var(--color-sentinel-border)] border border-[var(--color-sentinel-border-subtle)] transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <PhoneCall className="w-4 h-4 text-indigo-400" />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-white block">Initiate Call-Back</span>
+                      <span className="text-[10px] text-gray-400">Trigger out-of-band phone verification</span>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => { triggerCountermeasure("Push MFA Sent to Enrolled Mobile"); setPreTransactionWarningOpen(false); }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-[var(--color-sentinel-surface-3)] hover:bg-[var(--color-sentinel-border)] border border-[var(--color-sentinel-border-subtle)] transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-white block">Multifactor Authentication</span>
+                      <span className="text-[10px] text-gray-400">Send push notification to enrolled device</span>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => { triggerCountermeasure("Escalated to Supervisor Security Desk"); setPreTransactionWarningOpen(false); }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-[var(--color-sentinel-surface-3)] hover:bg-[var(--color-sentinel-border)] border border-[var(--color-sentinel-border-subtle)] transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-white block">Escalate to Supervisor</span>
+                      <span className="text-[10px] text-gray-400">Require dual-supervisor approval</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-[var(--color-sentinel-border-subtle)]">
+                <button
+                  onClick={() => {
+                    triggerCountermeasure("Transaction Force Approved");
+                    setPreTransactionWarningOpen(false);
+                  }}
+                  className="text-xs font-semibold text-gray-500 hover:text-red-400 transition"
+                >
+                  Force Approve Anyway
+                </button>
+                <button
+                  onClick={() => setPreTransactionWarningOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-white bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

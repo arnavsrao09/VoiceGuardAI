@@ -13,13 +13,19 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timezone
+from enum import Enum
 import numpy as np
 
+class InferenceMode(str, Enum):
+    ON_DEVICE = "ON_DEVICE"
+    EDGE = "EDGE"
+    CLOUD = "CLOUD"
 
 class PrivacyAnonymizer:
     """Privacy and Compliance Engine."""
 
     _privacy_mode_enabled: bool = True  # Default to Privacy-First RAM Mode
+
 
     @classmethod
     def set_privacy_mode(cls, enabled: bool):
@@ -45,8 +51,11 @@ class PrivacyAnonymizer:
             audio_array.fill(0.0)
 
     @classmethod
-    def generate_compliance_report(cls) -> dict:
+    def generate_compliance_report(cls, data_inventory: dict = None, retention_config: dict = None, audit_entries: int = 0) -> dict:
         """Generate a dynamic compliance report for DPDP Act 2023 (India) and GDPR (EU)."""
+        inventory = data_inventory or {}
+        config = retention_config or {}
+        
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "regulatory_frameworks": [
@@ -72,10 +81,23 @@ class PrivacyAnonymizer:
                 },
             ],
             "privacy_engine_config": {
-                "ram_only_buffer": True,
+                "ram_only_buffer": cls._privacy_mode_enabled,
                 "audio_file_persistence": False,
                 "feature_only_telemetry": True,
                 "embedding_anonymization": "L2 Normalized Vector Space",
+                "inference_mode": config.get("inference_mode", "EDGE"),
             },
-            "audit_summary": "VoiceGuardAI processes live PCM streams transiently in RAM. Raw audio waveforms are never saved to persistent storage.",
+            "data_inventory": {
+                "active_sessions": inventory.get("sessions", 0),
+                "voice_profiles": inventory.get("profiles", 0),
+                "telemetry_records": inventory.get("telemetry", 0),
+                "alerts": inventory.get("alerts", 0),
+            },
+            "retention_policy_days": {
+                "sessions": config.get("session_ttl_days", 30),
+                "telemetry": config.get("telemetry_ttl_days", 30),
+                "embeddings": config.get("embedding_ttl_days", 90),
+                "alerts": config.get("alert_ttl_days", 90)
+            },
+            "audit_summary": f"VoiceGuardAI processes live PCM streams transiently in RAM. {audit_entries} privacy events logged.",
         }

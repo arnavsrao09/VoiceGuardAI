@@ -5,6 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 import SpeakerProfilesPage from './pages/SpeakerProfilesPage';
 import AlertsPage from './pages/AlertsPage';
 import SettingsPage from './pages/SettingsPage';
+import PrivacyPage from './pages/PrivacyPage';
 import AuthPage from './pages/AuthPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -68,6 +69,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/privacy"
+          element={
+            <ProtectedRoute>
+              <PrivacyPage />
             </ProtectedRoute>
           }
         />

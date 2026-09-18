@@ -48,6 +48,7 @@ class VoiceProfile(Base):
     organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id"))
     external_user_id = Column(String, index=True)
     name = Column(String)
+    phone_number = Column(String, nullable=True)
     embedding = Column(EmbeddingType) # 192-dim ECAPA-TDNN embedding
     language = Column(String, default="en")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -93,3 +94,24 @@ class Alert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     acknowledged_at = Column(DateTime, nullable=True)
     action_taken = Column(String, nullable=True)
+
+class PrivacyAuditLog(Base):
+    __tablename__ = "privacy_audit_log"
+    
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
+    event_type = Column(String, index=True)
+    details = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class RetentionConfig(Base):
+    __tablename__ = "retention_config"
+    
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id"), unique=True)
+    session_ttl_days = Column(Float, default=30)
+    telemetry_ttl_days = Column(Float, default=30)
+    embedding_ttl_days = Column(Float, default=90)
+    alert_ttl_days = Column(Float, default=90)
+    inference_mode = Column(String, default="EDGE")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

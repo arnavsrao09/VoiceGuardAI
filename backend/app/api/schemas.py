@@ -13,12 +13,14 @@ def _ensure_utc(dt: Optional[datetime]) -> Optional[str]:
 class SpeakerProfileCreate(BaseModel):
     user_id: str
     name: str
+    phone_number: Optional[str] = None
     language: str = "en"
 
 class SpeakerProfileResponse(BaseModel):
     id: uuid.UUID
     user_id: str = Field(alias="external_user_id")
     name: str
+    phone_number: Optional[str] = None
     language: str
     created_at: datetime
     
@@ -59,9 +61,10 @@ class AlertResponse(BaseModel):
     trigger_reason: str
     risk_score: float
     created_at: datetime
+    acknowledged_at: Optional[datetime] = None
     
-    @field_serializer("created_at")
-    def serialize_alert_dt(self, dt: datetime, _info):
+    @field_serializer("created_at", "acknowledged_at")
+    def serialize_alert_dt(self, dt: Optional[datetime], _info):
         return _ensure_utc(dt)
 
     model_config = {"from_attributes": True}

@@ -35,6 +35,7 @@ async def enroll_speaker(
     user_id: str = Form(...),
     name: str = Form(...),
     language: str = Form("en"),
+    phone_number: str | None = Form(None),
     audio: UploadFile = File(...),
     db: AsyncSession = Depends(get_db)
 ):
@@ -65,12 +66,14 @@ async def enroll_speaker(
         external_user_id=user_id, 
         name=name, 
         embedding=embedding,
-        language=language
+        language=language,
+        phone_number=phone_number
     )
     return {
         "id": db_profile.id,
         "user_id": db_profile.external_user_id,
         "name": db_profile.name,
+        "phone_number": db_profile.phone_number,
         "language": db_profile.language,
         "created_at": db_profile.created_at,
     }
@@ -100,6 +103,23 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
 @router.get("/alerts", response_model=list[schemas.AlertResponse])
 async def list_alerts(db: AsyncSession = Depends(get_db)):
     return await crud.get_all_alerts(db)
+
+@router.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import update
+    from app.db.models import Alert
+    from datetime import datetime
+    
+    stmt = (
+        update(Alert)
+        .where(Alert.id == alert_id)
+        .values(acknowledged_at=datetime.utcnow())
+    )
+    res = await db.execute(stmt)
+    await db.commit()
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"message": "Alert acknowledged successfully"}
 
 @router.post("/speakers/verify")
 async def verify_speaker(
