@@ -11,7 +11,7 @@ __pycache__/
 # ML models
 app/ml/models/*.onnx
 app/ml/models/*.onnx.data
-app/ml/models/*.pt
+app/ml/checkpoints/
 app/ml/models/*.pth
 app/ml/models/*.bin
 app/ml/models/*.jit
