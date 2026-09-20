@@ -302,10 +302,10 @@ function TryItDemo() {
             animate={{ opacity: 1 }}
             className="text-center"
           >
-            <h3 className="text-xl sm:text-2xl font-bold text-[var(--color-sentinel-text)] pb-6">
+            <h3 className="text-2xl sm:text-3xl font-bold text-[var(--color-sentinel-text)] mb-6">
               Try it right now
             </h3>
-            <p className="text-sm text-[var(--color-sentinel-text-muted)] pb-6 mb-10 max-w-md mx-auto">
+            <p className="text-sm sm:text-base leading-relaxed text-[var(--color-sentinel-text-muted)] mb-10 max-w-2xl mx-auto text-center">
               Record your voice or simulate a deepfake upload to see the detection engine in action.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -502,7 +502,7 @@ function PipelineSection() {
   const inView = useInViewSimple(ref);
 
   return (
-    <section ref={ref} className="py-28 px-6">
+    <section ref={ref} className="py-20 px-6" id="pipeline">
       <div className="max-w-6xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -510,10 +510,10 @@ function PipelineSection() {
           transition={{ duration: 0.5 }}
           className="mb-14"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] pb-4">
+          <h2 className="text-4xl sm:text-5xl font-bold text-[var(--color-sentinel-text)] mb-6">
             Six-stage detection pipeline
           </h2>
-          <p className="text-[var(--color-sentinel-text-muted)] max-w-lg">
+          <p className="text-lg sm:text-xl leading-relaxed text-[var(--color-sentinel-text-muted)] max-w-2xl">
             From microphone to alert in under 400ms. Click each stage to explore.
           </p>
         </motion.div>
@@ -544,11 +544,11 @@ function PipelineSection() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${isActive ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-sentinel-text)]'}`}>
+                      <span className={`text-base font-bold ${isActive ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-sentinel-text)]'}`}>
                         {step.title}
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--color-sentinel-text-dim)] truncate">
+                    <p className="text-sm text-[var(--color-sentinel-text-dim)] truncate">
                       {step.tech}
                     </p>
                   </div>
@@ -579,15 +579,15 @@ function PipelineSection() {
                         <Icon className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-[var(--color-sentinel-text)]">{step.title}</h3>
-                        <p className="text-xs text-[var(--color-accent-primary)]">{step.tech}</p>
+                        <h3 className="text-xl font-bold text-[var(--color-sentinel-text)]">{step.title}</h3>
+                        <p className="text-sm text-[var(--color-accent-primary)]">{step.tech}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-[var(--color-sentinel-text-muted)] leading-relaxed mb-8">
+                    <p className="text-base text-[var(--color-sentinel-text-muted)] leading-relaxed mb-8">
                       {step.detail}
                     </p>
                     {/* Visual representation */}
-                    <div className="rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] p-4 h-32 flex items-center justify-center overflow-hidden" style={{ marginTop: '32px' }}>
+                    <div className="rounded-xl bg-[var(--color-sentinel-surface-2)] border border-[var(--color-sentinel-border-subtle)] p-4 h-32 flex items-center justify-center overflow-hidden mt-8">
                       <HeroWaveform active={activeStep < 3} />
                     </div>
                   </>
@@ -673,7 +673,7 @@ export default function LandingPage() {
       {/* ── Hero ── */}
       <section
         ref={heroRef}
-        className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 pt-20 pb-16 overflow-hidden"
+        className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 pt-28 pb-10 overflow-hidden"
       >
         <ParticleGrid />
 
@@ -685,7 +685,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: 'easeOut' }}
-            className="text-5xl sm:text-6xl md:text-[5rem] font-extrabold tracking-tight leading-[1.05] pb-6 text-[var(--color-sentinel-text)]"
+            className="text-6xl sm:text-7xl md:text-[6rem] font-extrabold tracking-tight leading-[1.05] mb-6 text-[var(--color-sentinel-text)]"
           >
             Detect voice clones
             <br />
@@ -696,7 +696,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.6 }}
-            className="text-lg sm:text-xl text-[var(--color-sentinel-text-muted)] max-w-xl leading-relaxed mb-10"
+            className="text-xl sm:text-2xl text-[var(--color-sentinel-text-muted)] max-w-2xl leading-relaxed mb-8"
           >
             Multi-layer ML ensemble analyzes live voice streams, scores impersonation risk, and fires alerts —
             all under 400 milliseconds.
@@ -706,7 +706,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="flex flex-wrap items-center justify-center gap-4 mt-6 mb-[55px]"
+            className="flex flex-wrap items-center justify-center gap-4 mb-12"
           >
             <Link
               to="/dashboard"
@@ -743,11 +743,11 @@ export default function LandingPage() {
       {/* ── Try It Section ── */}
       <section
         id="try-it"
-        className="relative min-h-[100dvh] flex items-center py-20 px-6 overflow-hidden"
+        className="relative pt-10 pb-20 px-6 overflow-hidden"
       >
         <ParticleGrid />
 
-        <div className="relative z-10 max-w-3xl mx-auto">
+        <div className="relative z-10 max-w-3xl mx-auto w-full">
           <TryItDemo />
         </div>
       </section>
@@ -756,7 +756,7 @@ export default function LandingPage() {
       <PipelineSection />
 
       {/* ── Features ── */}
-      <section id="features" className="py-28 px-6" ref={featRef}>
+      <section id="features" className="py-20 px-6" ref={featRef}>
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
@@ -764,10 +764,10 @@ export default function LandingPage() {
             transition={{ duration: 0.5 }}
             className="mb-14"
           >
-            <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-5">
+            <h2 className="text-4xl sm:text-5xl font-bold text-[var(--color-sentinel-text)] mb-6">
               What makes it different
             </h2>
-            <p className="text-[var(--color-sentinel-text-muted)] max-w-lg pt-2">
+            <p className="text-lg sm:text-xl leading-relaxed text-[var(--color-sentinel-text-muted)] max-w-2xl">
               Purpose-built for voice cloning threats. Not a general audio classifier.
             </p>
           </motion.div>
@@ -787,10 +787,10 @@ export default function LandingPage() {
                     className="w-6 h-6 mb-4 group-hover:scale-110 transition-transform"
                     style={{ color: feat.color }}
                   />
-                  <h3 className="text-sm font-bold text-[var(--color-sentinel-text)] mb-2">
+                  <h3 className="text-base sm:text-lg font-bold text-[var(--color-sentinel-text)] mb-3">
                     {feat.title}
                   </h3>
-                  <p className="text-xs text-[var(--color-sentinel-text-muted)] leading-relaxed pt-2">
+                  <p className="text-sm text-[var(--color-sentinel-text-muted)] leading-relaxed">
                     {feat.description}
                   </p>
                 </motion.div>
@@ -801,16 +801,16 @@ export default function LandingPage() {
       </section>
 
       {/* ── Risk Scale ── */}
-      <section className="py-28 px-6">
+      <section className="py-20 px-6">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] pb-4">
+          <h2 className="text-4xl sm:text-5xl font-bold text-[var(--color-sentinel-text)] mb-6">
             Four-tier risk scoring
           </h2>
-          <p className="text-[var(--color-sentinel-text-muted)] mb-16 max-w-lg">
+          <p className="text-lg sm:text-xl leading-relaxed text-[var(--color-sentinel-text-muted)] mb-14 max-w-2xl">
             Weighted ensemble fusion with EMA temporal smoothing. Configurable per deployment.
           </p>
 
-          <div className="relative pt-7">
+          <div className="relative">
             {/* Risk bar */}
             <div className="h-3 rounded-full overflow-hidden flex mb-8">
               <div className="flex-[3] bg-[var(--color-risk-low)]" />
@@ -829,10 +829,10 @@ export default function LandingPage() {
                 <div key={r.level} className="text-left">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ background: r.color }} />
-                    <span className="text-sm font-bold" style={{ color: r.color }}>{r.level}</span>
+                    <span className="text-base font-bold" style={{ color: r.color }}>{r.level}</span>
                   </div>
-                  <p className="text-xs text-[var(--color-sentinel-text-dim)] mb-0.5">{r.range}</p>
-                  <p className="text-xs text-[var(--color-sentinel-text-muted)]">{r.action}</p>
+                  <p className="text-sm text-[var(--color-sentinel-text-dim)] mb-1">{r.range}</p>
+                  <p className="text-sm text-[var(--color-sentinel-text-muted)] leading-relaxed">{r.action}</p>
                 </div>
               ))}
             </div>
@@ -841,12 +841,12 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="pt-16 pb-28 px-6">
+      <section className="py-20 px-6">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-sentinel-text)] mb-8">
+          <h2 className="text-4xl sm:text-5xl font-bold text-[var(--color-sentinel-text)] mb-12">
             Deploy in one command
           </h2>
-          <div className="mt-6 rounded-xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] p-4 mb-8">
+          <div className="rounded-xl bg-[var(--color-sentinel-surface)] border border-[var(--color-sentinel-border)] p-4 mb-10">
             <code className="text-sm text-[var(--color-accent-primary)]">
               docker-compose up -d
             </code>
