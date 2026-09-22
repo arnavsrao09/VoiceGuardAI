@@ -8,15 +8,8 @@ run on CPU.
 
 import numpy as np
 import librosa
-
-try:
-    import torch
-    import torchaudio
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
-    torch = None
-    torchaudio = None
+import torch
+import torchaudio
 
 
 class FeatureExtractor:
@@ -25,22 +18,16 @@ class FeatureExtractor:
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate
 
-        # Pre-build the LFCC transform (torchaudio) if available
-        if HAS_TORCH and torchaudio is not None:
-            try:
-                self._lfcc_transform = torchaudio.transforms.LFCC(
-                    sample_rate=sample_rate,
-                    n_lfcc=40,
-                    speckwargs={
-                        "n_fft": 1024,
-                        "hop_length": 256,
-                        "win_length": 1024,
-                    },
-                )
-            except Exception:
-                self._lfcc_transform = None
-        else:
-            self._lfcc_transform = None
+        # Pre-build the LFCC transform (torchaudio)
+        self._lfcc_transform = torchaudio.transforms.LFCC(
+            sample_rate=sample_rate,
+            n_lfcc=40,
+            speckwargs={
+                "n_fft": 1024,
+                "hop_length": 256,
+                "win_length": 1024,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Pre-processing
@@ -94,16 +81,23 @@ class FeatureExtractor:
         return np.expand_dims(S_dB, axis=0).astype(np.float32)  # [1, n_mels, T]
 
     def get_lfcc(self, audio: np.ndarray, n_lfcc: int = 40) -> np.ndarray:
-        """Return LFCC features of shape ``[1, n_lfcc, time]``."""
-        if not HAS_TORCH or torch is None or torchaudio is None:
-            # Fallback to librosa MFCC feature extraction when torchaudio is absent
-            mfcc = librosa.feature.mfcc(y=audio.astype(np.float32), sr=self.sample_rate, n_mfcc=n_lfcc)
-            return np.expand_dims(mfcc, axis=0).astype(np.float32)
+        """Return LFCC features of shape ``[1, n_lfcc, time]``.
 
+        LFCCs capture high-frequency vocoder artefacts better than MFCCs
+        because they use a *linear* (not mel) filter-bank, preserving
+        detail above 4 kHz where most synthesis artifacts reside.
+
+        Parameters
+        ----------
+        audio : np.ndarray
+            1-D float32 audio waveform.
+        n_lfcc : int
+            Number of LFCC coefficients.
+        """
         waveform = torch.from_numpy(audio.astype(np.float32)).unsqueeze(0)  # [1, N]
 
         # Rebuild transform if n_lfcc changed from default
-        if self._lfcc_transform is None or n_lfcc != getattr(self._lfcc_transform, 'n_lfcc', 40):
+        if n_lfcc != self._lfcc_transform.n_lfcc:
             transform = torchaudio.transforms.LFCC(
                 sample_rate=self.sample_rate,
                 n_lfcc=n_lfcc,

@@ -1,31 +1,94 @@
 # ============================================================
-# VoiceGuardAI Backend - Serverless / Production Requirements
+# VoiceGuardAI Backend - Requirements
+# Python 3.11+
 # ============================================================
 
-# Web Framework & Config
+# -----------------------------
+# Web Framework
+# -----------------------------
 fastapi
 uvicorn[standard]
+
+# -----------------------------
+# Configuration & Validation
+# -----------------------------
 pydantic>=2.0
 pydantic-settings>=2.0
 apscheduler
 
-# Database & ORM
+# -----------------------------
+# Database
+# -----------------------------
 sqlalchemy>=2.0
 asyncpg
+psycopg2-binary
 pgvector
+alembic
 
-# Numerical & Audio Processing
+# -----------------------------
+# Redis
+# -----------------------------
+redis
+
+# -----------------------------
+# Numerical / Scientific
+# -----------------------------
 numpy
 scipy
+
+# -----------------------------
+# Audio Processing
+# -----------------------------
 librosa
 soundfile
 
-# ONNX Runtime (Lightweight CPU Inference)
+# -----------------------------
+# Deep Learning
+# -----------------------------
+torch
+torchaudio
+
+# -----------------------------
+# ONNX Inference
+# -----------------------------
 onnxruntime
+
+# -----------------------------
+# Voice Activity Detection
+# -----------------------------
 silero-vad
 
-# HTTP, Multipart & Auth
+# -----------------------------
+# Speaker Verification
+# -----------------------------
+speechbrain
+
+# -----------------------------
+# Prosody Analysis
+# -----------------------------
+praat-parselmouth
+pyworld
+
+# -----------------------------
+# HTTP / Multipart
+# -----------------------------
 python-multipart
+
+# -----------------------------
+# HuggingFace (XLS-R / WavLM)
+# -----------------------------
+transformers
+huggingface_hub
+
+# -----------------------------
+# Testing
+# -----------------------------
+pytest
+pytest-asyncio
+httpx
+
+# -----------------------------
+# Auth
+# -----------------------------
 passlib[bcrypt]
 python-jose[cryptography]
-httpx
