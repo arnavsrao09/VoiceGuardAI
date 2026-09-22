@@ -1,0 +1,16 @@
+# Ignore backend and all heavy/unnecessary files
+backend/
+.git/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+scratch/
+.cursor/
+.agent/
+.impeccable/
+.vscode/
+.pytest_cache/
+docker-compose.yml
+*.lock
+*.md

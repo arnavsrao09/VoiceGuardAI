@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Clock, Database, AlertTriangle, UserMinus, ShieldCheck, Download, Trash2, CalendarDays } from 'lucide-react';
+import { Shield, Clock, Database, AlertTriangle, ShieldCheck, Download, Trash2, CalendarDays } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
 interface Inventory {
