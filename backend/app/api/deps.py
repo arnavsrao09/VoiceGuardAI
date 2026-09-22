@@ -10,6 +10,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import secrets
 import os
+import hashlib
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dummy-secret-key-for-hackathon-only")
 ALGORITHM = "HS256"
