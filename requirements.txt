@@ -1,0 +1,18 @@
+# VoiceGuardAI Root Requirements (Vercel Serverless Function Deployment)
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+pydantic-settings>=2.0
+apscheduler
+sqlalchemy>=2.0
+asyncpg
+pgvector
+numpy
+scipy
+soundfile
+onnxruntime
+silero-vad
+python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+httpx
