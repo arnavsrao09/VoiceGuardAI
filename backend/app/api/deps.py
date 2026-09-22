@@ -11,7 +11,9 @@ from datetime import datetime, timedelta
 import secrets
 import hashlib
 
-SECRET_KEY = "dummy-secret-key-for-hackathon-only"  # Replace with env var in prod
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dummy-secret-key-for-hackathon-only")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
