@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, Plus, Mic, CheckCircle2, ShieldCheck, Trash2, Globe, Calendar, Key, BookOpen, Activity, X } from 'lucide-react';
 import { getAuthToken, apiFetch } from '../lib/api';
+import { API_BASE_URL } from '../lib/config';
 
 export interface ConsistencyAnalytics {
   profile_id: string;
@@ -175,8 +176,8 @@ export default function SpeakerProfilesPage() {
         
         // Try org-scoped endpoint first, fall back to legacy
         const url = token
-          ? 'http://localhost:8000/api/v1/org/speakers'
-          : 'http://localhost:8000/api/v1/speakers';
+          ? `${API_BASE_URL}/org/speakers`
+          : `${API_BASE_URL}/speakers`;
         const res = await fetch(url, { headers });
         if (res.ok) {
           const data = await res.json();
@@ -301,7 +302,7 @@ export default function SpeakerProfilesPage() {
           const token = getAuthToken();
           const verifyHeaders: Record<string, string> = {};
           if (token) verifyHeaders['Authorization'] = `Bearer ${token}`;
-          const res = await fetch('http://localhost:8000/api/v1/speakers/verify', {
+          const res = await fetch(`${API_BASE_URL}/speakers/verify`, {
             method: 'POST',
             headers: verifyHeaders,
             body: formData,
@@ -415,7 +416,7 @@ export default function SpeakerProfilesPage() {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('http://localhost:8000/api/v1/speakers/enroll', {
+      const res = await fetch(`${API_BASE_URL}/speakers/enroll`, {
         method: 'POST',
         headers,
         body: formData,
@@ -483,7 +484,7 @@ export default function SpeakerProfilesPage() {
         const token = getAuthToken();
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        await fetch(`http://localhost:8000/api/v1/speakers/${id}`, { method: 'DELETE', headers });
+        await fetch(`${API_BASE_URL}/speakers/${id}`, { method: 'DELETE', headers });
       } catch (err) {
         console.error('Failed to delete from backend:', err);
       }

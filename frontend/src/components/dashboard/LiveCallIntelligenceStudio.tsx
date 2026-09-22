@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE_URL } from '../../lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe,
@@ -185,8 +186,8 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
     setGeoError(null);
     try {
       const url = targetIp
-        ? `http://localhost:8000/api/v1/telephony/caller-metadata?ip=${encodeURIComponent(targetIp)}`
-        : 'http://localhost:8000/api/v1/telephony/caller-metadata';
+        ? `${API_BASE_URL}/telephony/caller-metadata?ip=${encodeURIComponent(targetIp)}`
+        : `${API_BASE_URL}/telephony/caller-metadata`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: CallerGeoData = await res.json();
@@ -202,7 +203,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
 
   const fetchAsteriskStatus = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/telephony/asterisk/status');
+      const res = await fetch(`${API_BASE_URL}/telephony/asterisk/status`);
       if (res.ok) {
         const data = await res.json();
         setAsteriskStatus(data);
@@ -226,7 +227,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
         onCallerIdentified(simPhoneInput, 'Simulated Inbound SIP');
       }
 
-      const res = await fetch('http://localhost:8000/api/v1/telephony/asterisk/simulate-call', {
+      const res = await fetch(`${API_BASE_URL}/telephony/asterisk/simulate-call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,7 +257,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
   const handleHangupSimulatedCall = async () => {
     if (!simulatedCallId) return;
     try {
-      await fetch(`http://localhost:8000/api/v1/telephony/asterisk/hangup/${simulatedCallId}`, {
+      await fetch(`${API_BASE_URL}/telephony/asterisk/hangup/${simulatedCallId}`, {
         method: 'POST',
       });
       setSimulatedCallId(null);
@@ -272,7 +273,7 @@ export const LiveCallIntelligenceStudio: React.FC<LiveCallIntelligenceStudioProp
     setIsAnalyzing(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/telephony/analyze-conversation', {
+      const res = await fetch(`${API_BASE_URL}/telephony/analyze-conversation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToAnalyze }),

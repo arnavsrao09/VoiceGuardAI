@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE_URL } from '../../lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone,
@@ -179,8 +180,8 @@ export const LiveCallIntelligenceHub: React.FC<LiveCallIntelligenceHubProps> = (
     setGeoError(null);
     try {
       const url = targetIp
-        ? `http://localhost:8000/api/v1/telephony/caller-metadata?ip=${encodeURIComponent(targetIp)}`
-        : 'http://localhost:8000/api/v1/telephony/caller-metadata';
+        ? `${API_BASE_URL}/telephony/caller-metadata?ip=${encodeURIComponent(targetIp)}`
+        : `${API_BASE_URL}/telephony/caller-metadata`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: CallerGeoData = await res.json();
@@ -204,7 +205,7 @@ export const LiveCallIntelligenceHub: React.FC<LiveCallIntelligenceHubProps> = (
     setIsAnalyzing(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/telephony/analyze-conversation', {
+      const res = await fetch(`${API_BASE_URL}/telephony/analyze-conversation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToAnalyze }),

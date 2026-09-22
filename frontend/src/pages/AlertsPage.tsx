@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../lib/config';
 import { motion } from 'framer-motion';
 import { ShieldAlert, AlertTriangle, ShieldCheck, Info, Filter, Download, Clock, CheckCircle } from 'lucide-react';
 
@@ -21,7 +22,7 @@ export default function AlertsPage() {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/alerts');
+        const res = await fetch(`${API_BASE_URL}/alerts`);
         if (res.ok) {
           const data = await res.json();
           setAlerts(data.map((a: any) => ({
@@ -50,7 +51,7 @@ export default function AlertsPage() {
 
   const handleAcknowledge = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/alerts/${id}/acknowledge`, {
+      const res = await fetch(`${API_BASE_URL}/alerts/${id}/acknowledge`, {
         method: 'POST',
       });
       if (res.ok) {

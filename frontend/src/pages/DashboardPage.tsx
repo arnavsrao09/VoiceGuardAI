@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { WS_BASE_URL } from '../lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload,
@@ -15,7 +16,6 @@ import {
   Mic,
   Activity,
   Cpu,
-  Terminal,
   FileSpreadsheet,
   Fingerprint,
   MessageSquare,
@@ -575,7 +575,6 @@ export default function DashboardPage() {
     isConnected,
     riskData,
     alerts,
-    modelLogs,
     recordingTime,
     graceCountdown,
     error,
@@ -633,7 +632,7 @@ export default function DashboardPage() {
     const connect = () => {
       if (isCancelled) return;
       try {
-        ws = new WebSocket('ws://localhost:8000/ws/telemetry');
+        ws = new WebSocket(`${WS_BASE_URL}/ws/telemetry`);
         ws.onopen = () => {
           console.log('[Dashboard] Subscribed to backend live telemetry stream (/ws/telemetry)');
         };

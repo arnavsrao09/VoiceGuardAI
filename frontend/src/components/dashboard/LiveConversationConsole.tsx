@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../../lib/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Mic, Sparkles, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 
@@ -77,7 +78,7 @@ export const LiveConversationConsole: React.FC<LiveConversationConsoleProps> = (
     if (!textToAnalyze.trim()) return;
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/telephony/analyze-conversation', {
+      const res = await fetch(`${API_BASE_URL}/telephony/analyze-conversation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToAnalyze }),

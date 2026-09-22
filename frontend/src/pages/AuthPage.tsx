@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch, setAuthToken, getAuthToken } from '../lib/api';
+import { API_BASE_URL } from '../lib/config';
 import { ShieldAlert, Lock, Mail, Building2 } from 'lucide-react';
 
 export default function AuthPage() {
@@ -33,7 +34,7 @@ export default function AuthPage() {
         formData.append('username', email);
         formData.append('password', password);
         
-        const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
           method: 'POST',
           body: formData,
         });
@@ -57,7 +58,7 @@ export default function AuthPage() {
         formData.append('username', email);
         formData.append('password', password);
 
-        const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
           method: 'POST',
           body: formData,
         });

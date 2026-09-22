@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { WS_BASE_URL } from '../lib/config';
 
 const TARGET_SAMPLE_RATE = 16000;
 
@@ -178,7 +179,7 @@ export function useAudioStreamer() {
       if (context?.transferType) params.append('transfer_type', context.transferType);
       if (context?.callerPhone) params.append('caller_phone', context.callerPhone);
       
-      const wsUrl = `ws://localhost:8000/ws/stream?${params.toString()}`;
+      const wsUrl = `${WS_BASE_URL}/ws/stream?${params.toString()}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
