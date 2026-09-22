@@ -18,11 +18,22 @@ A weighted anomaly score aggregates all features into a single
 ``prosody_anomaly_score`` in [0, 1].
 """
 
-from __future__ import annotations
-
 import numpy as np
-import parselmouth  # type: ignore
-import pyworld as pw
+
+try:
+    import parselmouth  # type: ignore
+    HAS_PARSELMOUTH = True
+except ImportError:
+    parselmouth = None
+    HAS_PARSELMOUTH = False
+
+try:
+    import pyworld as pw
+    HAS_PYWORLD = True
+except ImportError:
+    pw = None
+    HAS_PYWORLD = False
+
 from scipy.signal import welch
 
 
@@ -108,6 +119,8 @@ class ProsodyAnalyzer:
 
     def _extract_f0(self, audio_f64: np.ndarray) -> tuple[float, float]:
         """Extract mean and std of F0 using pyworld Harvest."""
+        if not HAS_PYWORLD or pw is None:
+            return 0.0, 0.0
         try:
             f0, _t = pw.harvest(audio_f64, self.sample_rate)
             voiced = f0[f0 > 0]
@@ -121,6 +134,8 @@ class ProsodyAnalyzer:
         self, audio: np.ndarray
     ) -> tuple[float, float, float]:
         """Extract jitter, shimmer, and HNR via Praat (parselmouth)."""
+        if not HAS_PARSELMOUTH or parselmouth is None:
+            return 0.0, 0.0, 0.0
         try:
             snd = parselmouth.Sound(audio, sampling_frequency=self.sample_rate)
 
