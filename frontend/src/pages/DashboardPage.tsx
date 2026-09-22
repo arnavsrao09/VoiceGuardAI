@@ -15,7 +15,6 @@ import {
   Mic,
   Activity,
   Cpu,
-  Terminal,
   FileSpreadsheet,
   Fingerprint,
   MessageSquare,
@@ -575,7 +574,6 @@ export default function DashboardPage() {
     isConnected,
     riskData,
     alerts,
-    modelLogs,
     recordingTime,
     graceCountdown,
     error,
@@ -662,9 +660,9 @@ export default function DashboardPage() {
           }
         };
         ws.onerror = () => {
-          try { ws?.close(); } catch {}
+          try { ws?.close(); } catch { /* ignore */ }
         };
-      } catch (err) {
+      } catch {
         if (!isCancelled) {
           reconnectTimer = window.setTimeout(connect, 2000);
         }
@@ -677,7 +675,7 @@ export default function DashboardPage() {
       isCancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) {
-        try { ws.close(); } catch {}
+        try { ws.close(); } catch { /* ignore */ }
       }
     };
   }, []);
@@ -718,7 +716,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/org/sessions');
       if (data) {
-        setDbSessions(data.map((s: any) => {
+        setDbSessions(data.map((s: { session_id?: string; id: string; avg_risk_score?: number; risk_score?: number; caller_id?: string; status?: string; start_time: string; end_time?: string }) => {
           const fullId = String(s.session_id || s.id);
           const shortId = fullId.slice(0, 5);
           
@@ -749,7 +747,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/org/speakers');
       if (data) {
-        setSpeakerProfiles(data.map((p: any) => ({
+        setSpeakerProfiles(data.map((p: { id: string; name: string; user_id: string }) => ({
           id: p.id,
           name: p.name,
           user_id: p.user_id,
@@ -759,8 +757,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetchProfiles();
-    fetchSessions();
+    // Avoid calling state setters synchronously in effect body
+    setTimeout(() => {
+      void fetchProfiles();
+      void fetchSessions();
+    }, 0);
 
     // Auto-poll sessions every 2 seconds to keep logs fresh in real time
     const interval = setInterval(fetchSessions, 2000);
@@ -878,14 +879,17 @@ export default function DashboardPage() {
     return `${m}:${sec}`;
   };
 
-  const getRiskBadgeColor = (score: number) => {
-    if (score < 0.30) return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'LOW THREAT' };
-    if (score < 0.60) return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'ELEVATED' };
-    if (score < 0.80) return { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', label: 'HIGH RISK' };
-    return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', label: 'CRITICAL' };
+  const getRiskBadgeColor = (level?: string) => {
+    switch (level) {
+      case 'LOW': return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'LOW THREAT' };
+      case 'MEDIUM': return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'MEDIUM THREAT' };
+      case 'HIGH': return { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', label: 'HIGH RISK' };
+      case 'CRITICAL': return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', label: 'CRITICAL' };
+      default: return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'LOW THREAT' };
+    }
   };
 
-  const threatBadge = getRiskBadgeColor(currentScore);
+  const threatBadge = getRiskBadgeColor(activeRiskData?.level || 'LOW');
 
   return (
     <>
@@ -1316,7 +1320,7 @@ export default function DashboardPage() {
                       setSelectedLocation(`${geo.city}, ${geo.region} (${geo.country_code})`);
                     }
                   }}
-                  onCallerIdentified={(phone, _name) => {
+                  onCallerIdentified={(phone) => {
                     if (phone) setSelectedPhone(phone);
                   }}
                   onTriggerCallMonitoring={() => {

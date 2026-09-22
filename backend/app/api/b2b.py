@@ -28,10 +28,10 @@ async def b2b_enroll(
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
         
         pipeline = InferencePipeline.get_instance()
-        embedding_result = pipeline._extract_speaker_only(y)
+        emb_arr = pipeline.verifier.extract_enrollment_embedding(y)
 
-        if embedding_result.get("embedding") is not None:
-            embedding = embedding_result["embedding"].tolist()
+        if emb_arr is not None:
+            embedding = emb_arr.tolist()
         else:
             raise ValueError("Embedding extraction returned None.")
             

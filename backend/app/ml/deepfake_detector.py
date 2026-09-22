@@ -24,6 +24,9 @@ import numpy as np
 import onnxruntime as ort
 
 from app.config import settings
+from app.logging_config import get_logger
+
+logger = get_logger("deepfake")
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
@@ -48,10 +51,15 @@ class DeepfakeDetector:
         self,
         aasist_weight: float = 0.6,
         xlsr_weight: float = 0.4,
+        temperature: float = 0.05,
     ):
         self.threshold = settings.deepfake_threshold
         self.aasist_weight = aasist_weight
         self.xlsr_weight = xlsr_weight
+        # Temperature scaling for raw logits: the ONNX models output logits
+        # with very small magnitude (~0.05). Dividing by temperature amplifies
+        # the signal before softmax, enabling actual discrimination.
+        self._temperature = temperature
 
         # ── Load AASIST ONNX ──────────────────────────────────────────
         self._aasist_session: ort.InferenceSession | None = None
@@ -60,9 +68,9 @@ class DeepfakeDetector:
                 settings.aasist_onnx_path,
                 providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
             )
-            print("  [OK] AASIST ONNX model loaded")
+            logger.info("AASIST ONNX model loaded.")
         except Exception as e:
-            print(f"  [ERROR] Failed to load AASIST ONNX: {e}")
+            logger.warning("Failed to load AASIST ONNX: %s", e)
 
         # ── Load XLS-R ONNX (optional) ────────────────────────────────
         self._xlsr_session: ort.InferenceSession | None = None
@@ -71,9 +79,9 @@ class DeepfakeDetector:
                 settings.xlsr_onnx_path,
                 providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
             )
-            print("  [OK] XLS-R ONNX model loaded")
+            logger.info("XLS-R ONNX model loaded.")
         except Exception as e:
-            print(f"  [ERROR] Failed to load XLS-R ONNX: {e}  (optional — continuing)")
+            logger.debug("XLS-R ONNX not loaded (optional): %s", e)
 
         self._models_loaded = (
             self._aasist_session is not None or self._xlsr_session is not None
@@ -141,24 +149,33 @@ class DeepfakeDetector:
         else:
             return self._mock_predict()
 
-        # Score calibration:
-        # Prevent uncalibrated 0.50 logits from triggering false alarms on genuine speech.
-        # Genuine conversational speech baseline maps to ~0.15 - 0.25.
-        calibrated_prob = self._calibrate_spoof_score(raw_fusion)
-
         # Supporting forensic signal (Prosody) — secondary confirmation only
         if prosody_anomaly is not None:
             # If models are borderline (0.35-0.65), prosody helps tilt with low weight (0.15)
-            calibrated_prob = 0.85 * calibrated_prob + 0.15 * prosody_anomaly
+            final_prob = 0.85 * raw_fusion + 0.15 * prosody_anomaly
+        else:
+            final_prob = raw_fusion
 
-        calibrated_prob = float(np.clip(calibrated_prob, 0.0, 1.0))
+        final_prob = float(np.clip(final_prob, 0.0, 1.0))
+
+        logger.info(
+            "Deepfake scores: aasist=%.4f xlsr=%s raw_fusion=%.4f final=%.4f "
+            "threshold=%.4f is_synthetic=%s confidence=%.4f",
+            aasist_score if aasist_score is not None else 0.0,
+            f"{xlsr_score:.4f}" if xlsr_score is not None else "N/A",
+            raw_fusion,
+            final_prob,
+            self.threshold,
+            final_prob >= self.threshold,
+            confidence,
+        )
 
         return {
-            "spoof_probability": round(calibrated_prob, 4),
+            "spoof_probability": round(final_prob, 4),
             "aasist_score": round(float(aasist_score), 4) if aasist_score is not None else None,
             "xlsr_score": round(float(xlsr_score), 4) if xlsr_score is not None else None,
             "confidence": round(float(confidence), 4),
-            "is_synthetic": calibrated_prob >= self.threshold,
+            "is_synthetic": final_prob >= self.threshold,
         }
 
     # ------------------------------------------------------------------
@@ -195,14 +212,19 @@ class DeepfakeDetector:
                 windows = np.stack(chunks, axis=0).astype(np.float32)
 
             input_name = self._aasist_session.get_inputs()[0].name
-            logits = self._aasist_session.run(None, {input_name: windows})[0]
-            # logits shape: [batch, 2] -> [bonafide, spoof]
-            probs = _softmax(logits)
-            spoof_probs = probs[:, 1]
+            output = self._aasist_session.run(None, {input_name: windows})[0]
+            # output shape: [batch, 2] -> [bonafide, spoof]
+            # Model outputs raw logits with very small magnitude (~0.05).
+            # Temperature scaling amplifies the signal before softmax.
+            logits = np.asarray(output, dtype=np.float64)
+            logits_scaled = logits / self._temperature
+            probs = _softmax(logits_scaled)
+            # ASVspoof format: [spoof, bonafide] -> index 0 is spoof
+            spoof_probs = probs[:, 0]
             # Return mean spoof probability across windows
             return float(np.mean(spoof_probs))
         except Exception as e:
-            print(f"  AASIST inference error: {e}")
+            logger.error("AASIST inference error: %s", e)
             return None
 
     def _run_xlsr(self, audio: np.ndarray) -> float | None:
@@ -213,30 +235,17 @@ class DeepfakeDetector:
             input_name = self._xlsr_session.get_inputs()[0].name
             # XLS-R expects [batch, time]
             inp = np.expand_dims(audio, axis=0).astype(np.float32)
-            logits = self._xlsr_session.run(None, {input_name: inp})[0]
-            probs = _softmax(logits)[0]
-            return float(probs[1])
+            output = self._xlsr_session.run(None, {input_name: inp})[0]
+            # Model outputs raw logits with very small magnitude.
+            # Temperature scaling amplifies the signal before softmax.
+            logits = np.asarray(output, dtype=np.float64)
+            logits_scaled = logits / self._temperature
+            probs = _softmax(logits_scaled)
+            # ASVspoof format: [spoof, bonafide] -> index 0 is spoof
+            return float(probs[0][0])
         except Exception as e:
-            print(f"  XLS-R inference error: {e}")
+            logger.error("XLS-R inference error: %s", e)
             return None
-
-    @staticmethod
-    def _calibrate_spoof_score(raw_prob: float) -> float:
-        """Calibrate raw ensemble probability to standard baseline.
-
-        An uncalibrated linear head outputs ~0.50 on neutral speech.
-        This sigmoid mapping centers neutral unconfident scores (0.45-0.55)
-        to a safe genuine baseline (~0.20-0.30), while allowing confident
-        anomalies (>0.65) to escalate towards 1.0.
-        """
-        # Centering around 0.50 with a gentle slope
-        z = (raw_prob - 0.50) * 4.0
-        calibrated = 1.0 / (1.0 + np.exp(-z))
-        # Scale to ensure neutral raw 0.50 maps to 0.25 (genuine baseline)
-        if raw_prob <= 0.52:
-            return float(raw_prob * 0.50)
-        else:
-            return float(0.26 + (raw_prob - 0.52) * 1.54)
 
     # ------------------------------------------------------------------
     #  Helpers

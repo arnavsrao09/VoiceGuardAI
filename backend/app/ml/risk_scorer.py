@@ -54,7 +54,7 @@ class RiskScorer:
 
     def __init__(
         self,
-        ema_alpha: float = 0.35,
+        ema_alpha: float = 0.3,
         alert_consecutive_threshold: int = 1,
         speaker_threshold: float | None = None,
         deepfake_threshold: float | None = None,
@@ -70,6 +70,9 @@ class RiskScorer:
             else settings.deepfake_threshold
         )
 
+        self._ema_deepfake_prob: float = 0.0
+        self._ema_speaker_match: float = 0.0
+        self._ema_prosody_anomaly: float = 0.0
         self._current_ema: float = 0.0
         self._chunk_count: int = 0
         self._alert = _AlertState()
@@ -109,6 +112,22 @@ class RiskScorer:
             speaker_drift = 0.0
         else:
             speaker_drift = float(np.clip(speaker_drift, 0.0, 1.0))
+
+        # ── Input EMA Smoothing ───────────────────────────────────────
+        # Straight EMA smoothing — confidence does NOT scale the alpha.
+        # Confidence is used downstream to gate signal reliability.
+        if self._chunk_count == 1:
+            self._ema_deepfake_prob = deepfake_prob
+            self._ema_speaker_match = speaker_match
+            self._ema_prosody_anomaly = prosody_anomaly
+        else:
+            self._ema_deepfake_prob = self.ema_alpha * deepfake_prob + (1 - self.ema_alpha) * self._ema_deepfake_prob
+            self._ema_speaker_match = self.ema_alpha * speaker_match + (1 - self.ema_alpha) * self._ema_speaker_match
+            self._ema_prosody_anomaly = self.ema_alpha * prosody_anomaly + (1 - self.ema_alpha) * self._ema_prosody_anomaly
+
+        deepfake_prob = self._ema_deepfake_prob
+        speaker_match = self._ema_speaker_match
+        prosody_anomaly = self._ema_prosody_anomaly
 
         is_synthetic = deepfake_prob >= self.deepfake_threshold
         is_same_speaker: bool | None = None
@@ -220,16 +239,17 @@ class RiskScorer:
             raw_score = 0.0
         raw_score = max(0.0, min(1.0, raw_score))
 
-        # ── EMA Smoothing ─────────────────────────────────────────────
-        if self._chunk_count == 1 or np.isnan(self._current_ema):
-            self._current_ema = raw_score
-        else:
-            self._current_ema = (
-                self.ema_alpha * raw_score
-                + (1 - self.ema_alpha) * self._current_ema
-            )
-        if np.isnan(self._current_ema) or np.isinf(self._current_ema):
-            self._current_ema = raw_score
+        # ── Confidence gating ─────────────────────────────────────────
+        # If the detector's confidence in its own prediction is low,
+        # cap the authoritative level at MEDIUM and flag for review.
+        requires_review = False
+        if deepfake_confidence < 0.7:
+            requires_review = True
+            if level in (self.LEVEL_HIGH, self.LEVEL_CRITICAL):
+                level = self.LEVEL_MEDIUM
+
+        # Since inputs are smoothed, raw_score is already stable.
+        self._current_ema = raw_score
 
         # Debounce alert for sustained levels if necessary
         alert_fired, alert_reason = self._update_alert(
@@ -238,6 +258,25 @@ class RiskScorer:
             reason=reason,
         )
 
+        # Determine confidence state
+        if deepfake_confidence >= 0.8:
+            confidence_state = "CONFIDENT"
+        elif deepfake_confidence >= 0.5:
+            confidence_state = "UNCERTAIN"
+        else:
+            confidence_state = "INSUFFICIENT"
+
+        # audio_quality_score derived from confidence (placeholder logic)
+        audio_quality_score = deepfake_confidence
+
+        # Do not multiply confidence into score; keep raw_score as is
+        # Append confidence and audio quality info to result
+        result_extra = {
+            "confidence_state": confidence_state,
+            "audio_quality_score": round(audio_quality_score, 4),
+        }
+
+        # Build final result dict with extra fields
         return {
             "score": round(self._current_ema, 4),
             "raw_score": round(raw_score, 4),
@@ -251,6 +290,7 @@ class RiskScorer:
             "speaker_similarity": round(speaker_match, 4) if has_enrollment else None,
             "deepfake_score": round(deepfake_prob, 4),
             "chunk_index": self._chunk_count,
+            "requires_review": requires_review,
             "raw_components": {
                 "deepfake": round(deepfake_prob, 4),
                 "speaker_match": round(max(0.0, speaker_match), 4) if has_enrollment else 1.0,
@@ -258,10 +298,14 @@ class RiskScorer:
                 "prosody": round(prosody_anomaly, 4),
                 "context": round(context_risk, 4),
             },
+            **result_extra,
         }
 
     def reset(self):
         """Reset scoring state (call at session start)."""
+        self._ema_deepfake_prob = 0.0
+        self._ema_speaker_match = 0.0
+        self._ema_prosody_anomaly = 0.0
         self._current_ema = 0.0
         self._chunk_count = 0
         self._alert = _AlertState()

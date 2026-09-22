@@ -21,6 +21,9 @@ import torch
 from numpy.linalg import norm
 
 from app.config import settings
+from app.logging_config import get_logger
+
+logger = get_logger("speaker")
 
 _ECAPA_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"
 _ECAPA_SAVEDIR = Path(__file__).resolve().parent / "models" / "spkrec-ecapa-voxceleb"
@@ -55,9 +58,9 @@ class SpeakerVerifier:
                 settings.ecapa_onnx_path,
                 providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
             )
-            print("  [OK] ECAPA-TDNN ONNX model loaded")
+            logger.info("ECAPA-TDNN ONNX model loaded.")
         except Exception as e:
-            print(f"  [WARN] Failed to load ECAPA ONNX: {e}. Trying SpeechBrain fallback.")
+            logger.debug("ECAPA ONNX load failed: %s — trying SpeechBrain.", e)
 
         if self._onnx_session is not None:
             self._models_loaded = True
@@ -75,9 +78,9 @@ class SpeakerVerifier:
                 local_strategy=LocalStrategy.COPY,
             )
             self._classifier.eval()
-            print(f"  [OK] ECAPA-TDNN SpeechBrain model loaded ({_ECAPA_SOURCE} on {self._device})")
+            logger.info("ECAPA-TDNN SpeechBrain model loaded (%s on %s).", _ECAPA_SOURCE, self._device)
         except Exception as e:
-            print(f"  [ERROR] Failed to load SpeechBrain ECAPA: {e}. Running in mock mode.")
+            logger.warning("SpeechBrain ECAPA load failed: %s — mock mode.", e)
             self._classifier = None
 
         self._models_loaded = self._classifier is not None
@@ -105,12 +108,16 @@ class SpeakerVerifier:
             # score and can permanently poison an enrolled profile. Return an
             # explicit invalid embedding instead; the enrolment endpoint will
             # reject it and the caller is never mislabelled as an imposter.
-            print("  [WARN] Speaker verification model unavailable; no embedding produced.")
+            logger.debug("Speaker model unavailable; no embedding produced.")
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         audio_clean = self._preprocess_16k_mono(audio_chunk)
         if audio_clean is None:
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
+
+        # If audio is significantly longer than 2 seconds, average embeddings across windows
+        if len(audio_clean) > _ONNX_INPUT_SAMPLES + 16000:
+            return self.extract_enrollment_embedding(audio_clean)
 
         if self._onnx_session is not None:
             try:
@@ -122,7 +129,7 @@ class SpeakerVerifier:
             except Exception as e:
                 # Never replace a real profile match with a random embedding.
                 # A zero vector produces an explicit verification failure.
-                print(f"  [WARN] ECAPA ONNX extraction error: {e}.")
+                logger.debug("ECAPA ONNX extraction error: %s", e)
                 return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         try:
@@ -134,7 +141,7 @@ class SpeakerVerifier:
             emb = raw.detach().float().cpu().numpy().reshape(-1).astype(np.float32)
             return self._finalize_embedding(emb)
         except Exception as e:
-            print(f"  [WARN] ECAPA extraction error: {e}. Using zero embedding fallback.")
+            logger.debug("ECAPA extraction error: %s — using zero fallback.", e)
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
     # ------------------------------------------------------------------
@@ -298,16 +305,16 @@ class SpeakerVerifier:
 
         vec = np.asarray(emb, dtype=np.float32).reshape(-1)
         if vec.size != self.EMBEDDING_DIM:
-            print(f"  [WARN] Unexpected ECAPA embedding size {vec.size}; rejecting.")
+            logger.debug("Unexpected ECAPA embedding size %d; rejecting.", vec.size)
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         if not np.isfinite(vec).all():
-            print("  [WARN] ECAPA embedding contains NaN/Inf; rejecting.")
+            logger.debug("ECAPA embedding contains NaN/Inf; rejecting.")
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         n = float(norm(vec))
         if n < _ZERO_NORM or np.isnan(n) or np.isinf(n):
-            print("  [WARN] ECAPA embedding has zero/invalid norm; rejecting.")
+            logger.debug("ECAPA embedding has zero/invalid norm; rejecting.")
             return np.zeros(self.EMBEDDING_DIM, dtype=np.float32)
 
         return (vec / n).astype(np.float32)
@@ -365,14 +372,14 @@ class SpeakerVerifier:
                     clean_str = v.strip().strip("[]").strip("()")
                     v = [float(x) for x in clean_str.split(",") if x.strip()]
                 except Exception:
-                    print("  [WARN] Failed to parse string embedding.")
+                    logger.debug("Failed to parse string embedding.")
                     return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
 
         arr = np.asarray(v, dtype=np.float32).reshape(-1)
         arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
         if arr.size != SpeakerVerifier.EMBEDDING_DIM:
-            print(f"  [WARN] Invalid embedding size {arr.size} (expected {SpeakerVerifier.EMBEDDING_DIM}); rejecting.")
+            logger.debug("Invalid embedding size %d (expected %d); rejecting.", arr.size, SpeakerVerifier.EMBEDDING_DIM)
             return np.zeros(SpeakerVerifier.EMBEDDING_DIM, dtype=np.float32)
 
         if not np.isfinite(arr).all():

@@ -14,8 +14,12 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
+from app.api.deps import verify_api_key
+from app.logging_config import get_logger
+
+logger = get_logger("telephony")
 
 router = APIRouter()
 
@@ -117,7 +121,7 @@ async def telephony_voice_webhook(request: Request):
     called = form_data.get("To", form_data.get("destination", "VoiceGuardAI"))
     call_sid = form_data.get("CallSid", str(uuid.uuid4())[:12])
 
-    print(f"[TELEPHONY] Incoming voice webhook — From: {caller}, To: {called}, SID: {call_sid}")
+    logger.info("Incoming voice webhook — From: %s, To: %s, SID: %s", caller, called, call_sid)
 
     # Return TwiML that streams audio to our WebSocket for real-time analysis
     twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -250,10 +254,13 @@ class SIPProfileSelectionRequest(BaseModel):
     """The enrolled speaker to verify for SIP calls that start next."""
 
     profile_id: uuid.UUID | None = None
+    expected_caller_id: str | None = None
 
 
 @router.put("/sip/target-profile")
-async def set_sip_target_profile(body: SIPProfileSelectionRequest):
+async def set_sip_target_profile(
+    body: SIPProfileSelectionRequest
+):
     """Set or clear the speaker profile used by the next inbound SIP call.
 
     A SIP call owns an internal WebSocket connection. Without this bridge, a
@@ -275,10 +282,11 @@ async def set_sip_target_profile(body: SIPProfileSelectionRequest):
         if profile is None or not profile.embedding:
             raise HTTPException(status_code=404, detail="Selected speaker profile is unavailable")
 
-    sip_server_instance.set_target_profile(profile_id)
+    caller_id = body.expected_caller_id or "_next_call"
+    sip_server_instance.set_target_profile(profile_id, caller_id)
     return {
         "profile_id": profile_id,
-        "applies_to": "next inbound SIP call",
+        "applies_to": caller_id if caller_id != "_next_call" else "next inbound SIP call",
     }
 
 @router.get("/asterisk/status")
@@ -321,7 +329,7 @@ async def get_asterisk_status():
             "local_ip": get_local_ip(),
             "port": 5060,
             "registered_clients": registered_clients,
-            "target_profile_id": sip_server_instance.target_profile_id if sip_server_instance else None,
+            "target_profile_id": None,
             "active_calls_count": sip_active_calls,
             "active_calls": sip_active_call_list,
         },

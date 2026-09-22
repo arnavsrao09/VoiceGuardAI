@@ -18,8 +18,8 @@ class Settings(BaseSettings):
 
     # Thresholds
     vad_threshold: float = 0.5
-    deepfake_threshold: float = 0.0199 # Automatically tuned via evaluate_and_export_xlsr.py
-    speaker_verification_threshold: float = 0.72
+    deepfake_threshold: float = 0.30
+    speaker_verification_threshold: float = 0.35
     
     # Multi-Channel Alerting Settings (Email & SMS)
     smtp_host: str = "smtp.gmail.com"

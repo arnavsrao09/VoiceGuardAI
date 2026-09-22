@@ -4,6 +4,9 @@ from app.db.database import get_db
 from app.db import crud
 from app.api import schemas
 from app.ml.pipeline import InferencePipeline
+from app.logging_config import get_logger
+
+logger = get_logger("rest")
 from app.api.deps import SECRET_KEY, ALGORITHM
 from app.config import settings
 from jose import jwt, JWTError
@@ -47,6 +50,12 @@ async def enroll_speaker(
         # Load audio and resample to 16000Hz mono
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
         
+        # Telephone channel simulation (bandlimiting)
+        # We downsample to 8kHz and upsample back to 16kHz to simulate the G.711
+        # channel used by Zoiper/SIP. This prevents cross-channel verification failures.
+        y_8k = librosa.resample(y, orig_sr=16000, target_sr=8000)
+        y = librosa.resample(y_8k, orig_sr=8000, target_sr=16000)
+        
         # Extract ECAPA-TDNN averaged enrollment embedding
         pipeline = InferencePipeline.get_instance()
         emb = pipeline.verifier.extract_enrollment_embedding(y)
@@ -57,7 +66,7 @@ async def enroll_speaker(
             raise ValueError("Embedding extraction returned zero vector.")
             
     except Exception as e:
-        print(f"Enrollment Error: {e}")
+        logger.error("Enrollment Error: %s", e)
         raise HTTPException(status_code=400, detail=f"Failed to process audio: {str(e)}")
 
     db_profile = await crud.create_voice_profile(
@@ -148,7 +157,7 @@ async def verify_speaker(
             "threshold": settings.speaker_verification_threshold
         }
     except Exception as e:
-        print(f"Verification Error: {e}")
+        logger.error("Verification Error: %s", e)
         raise HTTPException(status_code=400, detail=f"Failed to verify audio: {str(e)}")
 
 
@@ -200,7 +209,7 @@ async def test_webhook():
 @router.post("/webhooks/listener")
 async def webhook_listener(payload: dict):
     """Internal test listener for webhook notifications."""
-    print(f"[TEST WEBHOOK RECEIVED] Payload: {payload}")
+    logger.debug("TEST WEBHOOK RECEIVED Payload: %s", payload)
     return {"status": "received", "timestamp": payload.get("timestamp")}
 
 

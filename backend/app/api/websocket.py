@@ -22,6 +22,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from jose import jwt, JWTError
 
 from app.core.audio_buffer import CircularAudioBuffer, VADSpeechAccumulator
+from app.core.vad import SileroVADWrapper
 from app.ml.pipeline import InferencePipeline
 from app.ml.risk_scorer import RiskScorer
 from app.db.database import AsyncSessionLocal
@@ -31,6 +32,9 @@ from app.db.models import DetectionSession
 from app.api.deps import SECRET_KEY, ALGORITHM
 from app.config import settings
 from app.alerts.notifier import AlertNotifier
+from app.logging_config import get_logger
+
+logger = get_logger("ws")
 
 router = APIRouter()
 
@@ -131,14 +135,15 @@ async def websocket_endpoint(websocket: WebSocket):
             org_id_str = payload.get("sub")
             if org_id_str:
                 organization_id = uuid.UUID(org_id_str)
-                print(f"[WS] Authenticated org: {organization_id}")
+                logger.debug("Authenticated org: %s", organization_id)
         except (JWTError, ValueError) as e:
-            print(f"[WS] Token decode failed (proceeding without org): {e}")
+            logger.debug("Token decode failed (proceeding without org): %s", e)
 
     # ── Per-session state ─────────────────────────────────────────────
     buffer = CircularAudioBuffer()
     speaker_speech = VADSpeechAccumulator(min_sec=1.5, max_sec=3.0, hop_sec=1.0)
     risk_scorer = RiskScorer()
+    vad = SileroVADWrapper()
     session_embeddings: list[np.ndarray] = []
     session_risk_scores: list[float] = []
     enrollment_embedding: np.ndarray | None = None
@@ -166,12 +171,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if prof and prof.embedding:
                     enrollment_embedding = pipeline.verifier._l2_normalize(prof.embedding)
                     profile_name = prof.name
-                    print(
-                        f"[WS] Loaded speaker profile '{prof.name}' ({profile_uuid}) "
-                        f"shape={enrollment_embedding.shape}, norm={np.linalg.norm(enrollment_embedding):.4f}"
-                    )
+                    logger.debug("Loaded speaker profile '%s' (%s)", prof.name, profile_uuid)
         except Exception as e:
-            print(f"[WS] Failed to load profile {profile_id_param}: {e}")
+            logger.warning("Failed to load profile %s: %s", profile_id_param, e)
 
     # Create session in DB with organization_id and contextual metadata
     caller_label = (
@@ -190,7 +192,7 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         session_id = db_session.session_id
 
-    print(f"[WS] Session {session_id} — client connected (Profile: {profile_name or 'None'}, Location: {location_param}, Amount: ${transaction_amount})")
+    logger.info("Session %s started (profile=%s, location=%s)", session_id, profile_name or 'None', location_param)
 
     try:
         while True:
@@ -204,8 +206,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
                 # VAD check — only buffer speech
-                speech_prob = pipeline.vad.is_speech(audio_array)
-                is_speech = pipeline.vad.update_state(
+                speech_prob = vad.is_speech(audio_array)
+                is_speech = vad.update_state(
                     speech_prob, len(audio_array)
                 )
 
@@ -238,11 +240,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                 or settings.speaker_verification_threshold
                             )
                             stable_speaker_verified = bool(stable_speaker_sim >= th)
-                            print(
-                                f"[SPEAKER UPDATE] raw_sim={raw_sim:.4f}, "
-                                f"ema_sim={stable_speaker_sim:.4f}, "
-                                f"threshold={th:.4f}, "
-                                f"verified={stable_speaker_verified}"
+                            logger.debug(
+                                "Speaker EMA: raw=%.4f ema=%.4f th=%.4f verified=%s",
+                                raw_sim, stable_speaker_sim, th, stable_speaker_verified
                             )
                         else:
                             emb = await asyncio.to_thread(
@@ -326,12 +326,21 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Continuously persist latest risk score to DetectionSession in DB
                     async with AsyncSessionLocal() as db:
+                        mean_score = sum(session_risk_scores) / len(session_risk_scores) if session_risk_scores else round(float(result["score"]), 3)
                         stmt = (
                             update(DetectionSession)
                             .where(DetectionSession.session_id == session_id)
-                            .values(avg_risk_score=round(float(result["score"]), 3))
+                            .values(avg_risk_score=round(mean_score, 3))
                         )
                         await db.execute(stmt)
+                        
+                        await crud.add_risk_telemetry(db, session_id, {
+                            "timestamp": datetime.utcnow(),
+                            "risk_score": float(result["score"]),
+                            "deepfake_prob": float(result["deepfake_score"]),
+                            "speaker_sim": float(result["speaker_similarity"] or 0.0),
+                            "anomaly_flags": {"threat_category": result["threat_category"]}
+                        })
                         
                         if result["should_alert"] and result["alert_reason"]:
                             session_max_alert_reason = result["alert_reason"]
@@ -405,17 +414,17 @@ async def websocket_endpoint(websocket: WebSocket):
                             "caller_id": caller_label,
                         })
                 except Exception as ex:
-                    print(f"[WS] Error processing text control frame: {ex}")
+                    logger.debug("Error processing text control frame: %s", ex)
 
     except WebSocketDisconnect:
-        print(f"[WS] Session {session_id} — client disconnected")
+        logger.info("Session %s — client disconnected", session_id)
     except Exception as e:
-        print(f"[WS] Session {session_id} — error: {e}")
+        logger.warning("Session %s — error: %s", session_id, e)
     finally:
         buffer.clear()
         speaker_speech.clear()
         risk_scorer.reset()
-        pipeline.vad.reset()
+        vad.reset()
         session_embeddings.clear()
         
         # End session in DB and store final risk score
@@ -428,8 +437,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 sess.status = "ended"
                 if session_risk_scores:
                     # Save final risk score when user stops recording
-                    final_score = round(float(session_risk_scores[-1]), 3)
-                    sess.avg_risk_score = final_score
+                    final_score = sum(session_risk_scores) / len(session_risk_scores)
+                    sess.avg_risk_score = round(final_score, 3)
                     
                     if session_max_alert_reason:
                         await crud.create_alert(

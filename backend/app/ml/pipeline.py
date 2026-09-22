@@ -30,6 +30,9 @@ from app.core.vad import SileroVADWrapper
 from app.ml.deepfake_detector import DeepfakeDetector
 from app.ml.prosody_analyzer import ProsodyAnalyzer
 from app.ml.speaker_verifier import SpeakerVerifier
+from app.logging_config import get_logger
+
+logger = get_logger("pipeline")
 
 
 class InferencePipeline:
@@ -42,19 +45,14 @@ class InferencePipeline:
     _instance: ClassVar[Optional["InferencePipeline"]] = None
 
     def __init__(self):
-        print("\n" + "=" * 60)
-        print("VoiceGuardAI — Loading ML Models")
-        print("=" * 60)
+        logger.info("Loading ML models...")
 
-        self.vad = SileroVADWrapper()
         self.feature_extractor = FeatureExtractor()
         self.detector = DeepfakeDetector()
         self.verifier = SpeakerVerifier()
         self.prosody = ProsodyAnalyzer()
 
-        print("=" * 60)
-        print("Model loading complete.")
-        print("=" * 60 + "\n")
+        logger.info("Model loading complete.")
 
     # ------------------------------------------------------------------
     # Singleton accessor
@@ -77,7 +75,7 @@ class InferencePipeline:
         ONNX Runtime JIT-compiles kernels on first run, so the very
         first real request would be slow without warmup.
         """
-        print("Warming up inference pipeline …")
+        logger.info("Warming up inference pipeline...")
         dummy = np.zeros(32000, dtype=np.float32)  # 2 s of silence
 
         t0 = time.perf_counter()
@@ -86,7 +84,7 @@ class InferencePipeline:
         self.prosody.analyze(dummy)
         elapsed = (time.perf_counter() - t0) * 1000
 
-        print(f"  Warmup complete in {elapsed:.0f} ms")
+        logger.info("Warmup complete in %.0f ms", elapsed)
 
     # ------------------------------------------------------------------
     # Main inference
@@ -123,7 +121,6 @@ class InferencePipeline:
         t0 = time.perf_counter()
 
         # ── Concurrent inference ──────────────────────────────────────
-        deepfake_task = asyncio.to_thread(self.detector.predict, audio)
         prosody_task = asyncio.to_thread(self.prosody.analyze, audio)
 
         if skip_speaker:
@@ -144,28 +141,32 @@ class InferencePipeline:
                 self._extract_speaker_only, audio
             )
 
-        deepfake_result, prosody_result, speaker_result = await asyncio.gather(
-            deepfake_task, prosody_task, speaker_task,
-            return_exceptions=True,
-        )
-
-        # ── Handle exceptions gracefully ──────────────────────────────
-        if isinstance(deepfake_result, Exception):
-            print(f"  Deepfake inference error: {deepfake_result}")
-            deepfake_result = {
-                "spoof_probability": 0.2, "aasist_score": None,
-                "xlsr_score": None, "confidence": 0.0,
-                "is_synthetic": False,
-            }
+        prosody_result = await prosody_task
         if isinstance(prosody_result, Exception):
-            print(f"  Prosody inference error: {prosody_result}")
+            logger.debug("Prosody inference error: %s", prosody_result)
             prosody_result = {
                 "f0_mean": 0.0, "f0_std": 0.0, "jitter": 0.0,
                 "shimmer": 0.0, "hnr": 0.0, "spectral_flatness": 0.0,
                 "prosody_anomaly_score": 0.2,
             }
+
+        prosody_anomaly = float(prosody_result.get("prosody_anomaly_score", 0.2))
+        deepfake_task = asyncio.to_thread(self.detector.predict, audio, prosody_anomaly)
+
+        deepfake_result, speaker_result = await asyncio.gather(
+            deepfake_task, speaker_task, return_exceptions=True
+        )
+
+        # ── Handle exceptions gracefully ──────────────────────────────
+        if isinstance(deepfake_result, Exception):
+            logger.debug("Deepfake inference error: %s", deepfake_result)
+            deepfake_result = {
+                "spoof_probability": 0.2, "aasist_score": None,
+                "xlsr_score": None, "confidence": 0.0,
+                "is_synthetic": False,
+            }
         if isinstance(speaker_result, Exception):
-            print(f"  Speaker inference error: {speaker_result}")
+            logger.debug("Speaker inference error: %s", speaker_result)
             speaker_result = {
                 "similarity": 0.0, "is_verified": False,
                 "threshold": 0.72, "margin": -0.72,
@@ -181,7 +182,7 @@ class InferencePipeline:
                     current_emb, session_embeddings
                 )
             except Exception as e:
-                print(f"  Drift detection error: {e}")
+                logger.debug("Drift detection error: %s", e)
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
 

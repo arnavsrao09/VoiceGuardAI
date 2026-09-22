@@ -116,7 +116,7 @@ class AsteriskARIBridge:
         retry_delay = 3
         while self._is_running:
             try:
-                logger.info(f"[AsteriskARI] Connecting to {self.ws_events_url}...")
+                logger.debug(f"[AsteriskARI] Connecting to {self.ws_events_url}...")
                 async with websockets.connect(self.ws_events_url) as ws:
                     logger.info("[AsteriskARI] Successfully connected to Asterisk ARI WebSocket!")
                     async for raw_message in ws:
@@ -128,7 +128,7 @@ class AsteriskARIBridge:
                         except Exception as err:
                             logger.error(f"[AsteriskARI] Error processing event: {err}")
             except (websockets.exceptions.ConnectionClosedError, OSError) as e:
-                logger.warning(f"[AsteriskARI] Connection to Asterisk failed: {e}. Retrying in {retry_delay}s...")
+                logger.debug(f"[AsteriskARI] Connection to Asterisk failed: {e}. Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
             except asyncio.CancelledError:
                 break

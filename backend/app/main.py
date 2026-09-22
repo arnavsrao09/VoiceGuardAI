@@ -11,9 +11,14 @@ from .api import privacy
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.privacy.retention import DataRetentionManager
 from app.db.database import AsyncSessionLocal
+from app.logging_config import setup_logging, get_logger
+
+logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
+
     # Startup: Initialize DB
     try:
         async with engine.begin() as conn:
@@ -21,11 +26,11 @@ async def lifespan(app: FastAPI):
                 try:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
                 except Exception as e:
-                    print(f"[DB] pgvector extension creation skipped: {e}")
+                    logger.debug("pgvector extension creation skipped: %s", e)
             await conn.run_sync(Base.metadata.create_all)
-        print("[DB] Tables and extensions verified successfully.")
+        logger.info("Database tables and extensions verified.")
     except Exception as e:
-        print(f"[DB] Initialization warning (continuing startup): {e}")
+        logger.warning("DB init warning (continuing): %s", e)
 
     # Startup: Start APScheduler for background tasks
     scheduler = AsyncIOScheduler()
@@ -33,11 +38,11 @@ async def lifespan(app: FastAPI):
     async def scheduled_purge_job():
         try:
             async with AsyncSessionLocal() as db:
-                print("[BACKGROUND] Running scheduled privacy data purge...")
+                logger.debug("Running scheduled privacy data purge...")
                 purged = await DataRetentionManager.run_scheduled_purge(db)
-                print(f"[BACKGROUND] Purge complete: {purged}")
+                logger.debug("Purge complete: %s", purged)
         except Exception as e:
-            print(f"[BACKGROUND] Error in scheduled purge: {e}")
+            logger.warning("Error in scheduled purge: %s", e)
             
     scheduler.add_job(
         scheduled_purge_job, 
@@ -55,9 +60,17 @@ async def lifespan(app: FastAPI):
     try:
         from .telephony.sip_server import start_sip_server
         await start_sip_server()
-        print("[SIP] VoiceGuard SIP gateway started on port 5060.")
+        logger.info("SIP gateway started on port 5060.")
     except Exception as e:
-        print(f"[SIP] Warning starting SIP server: {e}")
+        logger.warning("SIP server start warning: %s", e)
+
+    # Startup: Start Asterisk ARI bridge (non-blocking, reconnects automatically)
+    try:
+        from .telephony.asterisk_bridge import asterisk_bridge
+        await asterisk_bridge.start()
+        logger.info("Asterisk ARI bridge started.")
+    except Exception as e:
+        logger.debug("Asterisk bridge not started (non-critical): %s", e)
 
     yield
     # Shutdown: Clean up if needed
