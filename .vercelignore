@@ -1,0 +1,18 @@
+# Vercel Deployment Ignore Rules
+.git/
+.venv/
+venv/
+node_modules/
+frontend/node_modules/
+scratch/
+backend/app/ml/models/*.onnx
+backend/app/ml/models/*.data
+backend/app/ml/models/*.bin
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+*.jit
+*.ckpt
+*.wav
+*.mp3
